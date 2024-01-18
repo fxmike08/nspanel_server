@@ -1,0 +1,114 @@
+nspanel-ds:
+  module: nspanel-lovelace-ui
+  mqtt:
+    rx_topic: "tx/nspanel-ds"
+    tx_topic: "rx/nspanel-ds"
+  model: "EU"
+  config:
+    timeout_to_screensaver: 35
+    screensaver_brightness:
+      - time: "7:00:00"
+        value: 10
+      - time: "23:00:00"
+        value: 1
+    locale: "ro_RO"
+  cards:
+    - type: screensaver
+      entities:
+        - entity: weather.accuweather
+          name: weather
+        - entity: sensor.nspanel_ds_temperature_2
+          icon: home-thermometer-outline
+          name: temperatureSensor
+    - type: cardAlarm
+      title: Alarm Test 1
+      entities:
+        - entity: alarm_control_panel.alarm
+    - type: cardQR
+      title: Guest Wifi
+      data: "WIFI:S:WiFi ACCESS V;T:WPA;P:ec98-XDEG-n8m3;;"
+      entities:
+        - entity: iText.test_ssid
+          name: Name
+          icon: mdi:wifi
+        - entity: iText.test_pw
+          name: Password
+          icon: mdi:key
+    - type: cardThermo
+      title: HeatPump
+      entities:
+        - entity: climate.dormitor
+    - type: cardHome
+      title: Home
+      entities:
+        - entity: light.knx_light_living_1
+          name: b1
+        - entity: light.knx_light_living_2
+          name: b2
+        - entity: light.knx_light_living_hol
+          name: b3
+        - entity: light.knx_light_ds_1
+          name: b11
+        - entity: light.knx_light_ds_2
+          name: b12
+        - entity: light.knx_light_ds_baie
+          name: b14
+        - entity: light.knx_light_ds_dressing
+          name: b17
+        - entity: light.knx_light_dv_1
+          name: b31
+        - entity: light.knx_light_dv_2
+          name: b32
+        - entity: light.knx_light_dv_baie
+          name: b34
+        - entity: light.knx_light_dv_dressing
+          name: b37
+        - entity: light.knx_light_hol_dormitoare
+          name: b60
+        - entity: light.knx_light_birou_1
+          name: b71
+        - entity: light.knx_light_birou_2
+          name: b72
+        - entity: light.knx_light_n_intrare_baie
+          name: b75
+        - entity: light.knx_light_n_intrare_hol
+          name: b78
+        - entity: light.knx_light_buc_1
+          name: b91
+        - entity: light.knx_light_buc_2
+          name: b92
+        - entity: light.knx_light_buc_camara
+          name: b94
+        - entity: light.knx_light_outside_n
+          name: b111
+        - entity: light.knx_light_outside_e
+          name: b112
+        - entity: light.knx_light_outside_s
+          name: b113
+        - entity: light.knx_light_outside_v
+          name: b114
+
+#nspanel-dv:
+#  module: nspanel-lovelace-ui
+#  mqtt:
+#    rx_topic: "rx/nspanel-dv"
+#    tx_topic: "tx/nspanel-dv"
+#  model: "EU"
+#  config:
+#    timeout_to_screensaver: 35
+#    screensaver_brightness:
+#      - time: "7:00:00"
+#        value: 10
+#      - time: "23:00:00"
+#        value: 1
+#    locale: "ro_RO"
+#  cards:
+#    - type: screensaver
+#      entities:
+#        - entity: weather.accuweather
+#        - entity: sensor.nspanel_dv_temperature_2
+#          icon: home-thermometer-outline
+#    - type: cardAlarm
+#      title: Alarm Test 1
+#      entities:
+#        - entity: alarm_control_panel.alarm

@@ -1,0 +1,33 @@
+[package]
+name = "nspanel_server"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+indexmap = "1.7.0"
+lazy_static = "1.4.0"
+notify = "6.1.1"
+serde_yaml = "0.9.27"
+slog = { version = "2.7.0", features = [ "max_level_trace", "release_max_level_debug", "nested-values"] }
+slog-async = "2.8.0"
+slog-term = "2.9.0"
+
+serde = { version = "1.0.193", features = ["derive"] }
+regex = { version = "1.10.2", features = [] }
+
+rumqttc = "0.23.0"
+async-std = "1.12.0"
+tokio = { version = "1.34.0", features= ["rt-multi-thread", "sync"] }
+futures = "0.3.29"
+serde_json = "1.0.108"
+bytes = { version = "1.5.0", features = [] }
+log = "0.4.20"
+
+chrono = "0.4.31"
+tokio-tungstenite = "0.21.0"
+async-tungstenite = "0.24.0"
+tokio-native-tls = { version = "0.3.1", optional = true }
+url = "2.5.0"
+

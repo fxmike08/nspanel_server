@@ -1,0 +1,18 @@
+MQTT:
+  type: mqtt
+  namespace: mqtt
+  client_id: "rustApp"
+  client_host: homeassistant.local
+  client_port: 1883
+  client_user: "user"
+  client_password: "*"
+  client_topics: NONE
+hass:
+  type: hass
+  host: homeassistant.local
+  port: 8123
+  token: ""
+
+
+
+
