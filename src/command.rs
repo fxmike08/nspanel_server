@@ -2,28 +2,36 @@ use bytes::Bytes;
 use chrono::{FixedOffset, Timelike, Utc};
 
 use crate::config::schema::Config;
+use crate::utils::{STORED_STATE, WEATHER_COLORS_KEY, WEATHER_KEY};
 
-pub trait Command {
-    fn execute(&self) -> Vec<Bytes>;
-}
-
-pub struct Startup<'a, 'b> {
+pub struct Command<'a> {
     pub(crate) config: &'a Config,
-    pub(crate) device_id: &'b str,
+    pub(crate) device_id: &'a str,
 }
 
-impl<'a, 'b> Startup<'a, 'b> {
-    pub(crate) fn new(config: &'a Config, device_id: &'b str) -> Self {
-        Startup { config, device_id }
+
+impl<'a> Command<'_> {
+    pub(crate) fn new(config: &'a Config, device_id: &'a str) -> Command<'a> {
+        Command { config, device_id }
     }
-}
 
-impl Command for Startup<'_, '_> {
-    fn execute(&self) -> Vec<Bytes> {
+    pub fn execute (&self, page: &str) -> Vec<Bytes> {
+        match page{
+            "screensaver" | "startup" => {
+                self.screensaver()
+            }
+            _ => {
+                vec![]
+            }
+        }
+    }
+
+    fn screensaver(&self) -> Vec<Bytes> {
         let dt = Utc::now().with_timezone(&FixedOffset::east_opt(2 * 3600).unwrap());
         let date = dt.format("%A, %d. %B %Y");
         let time = format!("time~{}:{}~", dt.hour(), dt.minute());
-        let result: Vec<Bytes> = vec![
+
+        let mut result: Vec<Bytes> = vec![
             "X".into(),
             time.into(),
             format!("date~{}", date).into(),
@@ -36,14 +44,20 @@ impl Command for Startup<'_, '_> {
                     .config
                     .timeout_to_screensaver
             )
-            .into(),
+                .into(),
             "dimmode~10~100~6371".into(),
             "pageType~screensaver".into(),
-            // temp.into(),
             "temperature~~".into(),
-            // r#"weatherUpdate~\xee\x96\x94~6.7\xc2\xb0C~Tue~\xee\x96\x8f~5.7\xc2\xb0C~2.3\xc2\xb0C~Wed~\xee\x96\x95~4.5\xc2\xb0C~-1.3\xc2\xb0C~Thu~\xee\x96\x8f~1.0\xc2\xb0C~-1.2\xc2\xb0C~Fri~\xee\x96\x8f~1.1\xc2\xb0C~-1.5\xc2\xb0C~~"#.into(),
-            // r#"color~0~65535~65535~65535~35957~65535~65535~65535~65535~65535~31728~249~31728~31728~65535~65535~65535~65535~65535~65535~65535~65535"#.into(),
         ];
+        {
+            let map = STORED_STATE.read().expect("Failed to acquire read lock on STORED_STATE: Lock is poisoned!");
+            if let Some(weather) = map.get(WEATHER_KEY) {
+                result.push(Bytes::from(weather.clone()));
+            }
+            if let Some(weather_colors) = map.get(WEATHER_COLORS_KEY) {
+                result.push(Bytes::from(weather_colors.clone()));
+            }
+        }
         result
     }
 }

@@ -4,35 +4,33 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use chrono::{FixedOffset, Timelike, Utc};
+use log::{debug, error, info, trace};
 use rumqttc::v5::mqttbytes::v5::Packet::Publish;
 use rumqttc::v5::mqttbytes::QoS;
 use rumqttc::v5::Event::Incoming;
 use rumqttc::v5::{AsyncClient, EventLoop, MqttOptions};
 use serde_json::Value;
-use slog::{error, info, Logger};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::Mutex;
 use tokio::time::{interval, timeout, Duration};
 
 use crate::command::Command;
-use crate::command::Startup;
 use crate::config::schema::{Config, Device};
 use crate::homeassitant::events::RootEvent;
 use crate::pages::{get_room_temperature, get_weather_and_colors};
 
 type Client = (AsyncClient, EventLoop);
 
-pub struct MqttC {
-    pub config: Config,
+pub struct MqttC{
+    pub config: Arc<Config>,
     pub client: Client,
     pub running: bool,
-    pub logger: Logger,
 }
 
-impl MqttC {
-    pub fn new(config: Config, logger: Logger) -> Self {
+impl MqttC{
+    pub fn new(config: Arc<Config>) -> Self {
         let mut mqttoptions = MqttOptions::new(
-            "test-1",
+            "nspanel_server_rust",
             config.connectivity.mqtt.host.as_str(),
             config.connectivity.mqtt.port,
         );
@@ -46,7 +44,6 @@ impl MqttC {
             config,
             client,
             running: false,
-            logger,
         }
     }
 
@@ -58,7 +55,7 @@ impl MqttC {
             Arc<Mutex<Receiver<(String, String)>>>,
         ),
     ) {
-        info!(self.logger, "Entering in subscribe method");
+        debug!("Entering in subscribe method");
         for device in self.config.devices.values() {
             self.client
                 .0
@@ -66,7 +63,6 @@ impl MqttC {
                 .await
                 .unwrap();
             info!(
-                self.logger,
                 "Mqtt client is register to listen on topic {}", &device.mqtt.tx_topic
             );
         }
@@ -75,26 +71,23 @@ impl MqttC {
         let receiver_from_hass = channel.1;
 
         let publisher = self.client.0.clone();
-        let logger = self.logger.clone();
         let config = self.config.clone();
         let shutdown_cloned = shutdown.clone();
 
         let hass_changes_future = async move {
             MqttC::send_on_event(
-                logger,
                 publisher,
-                config,
+                config.as_ref(),
                 shutdown_cloned,
                 receiver_from_hass,
             )
             .await;
         };
         let publisher = self.client.0.clone();
-        let logger = self.logger.clone();
         let config = self.config.clone();
         let shutdown_cloned = shutdown.clone();
         let ticker_future = async move {
-            MqttC::send_periodic_message(logger, publisher, config, shutdown_cloned).await;
+            MqttC::send_periodic_message(publisher, config.as_ref(), shutdown_cloned).await;
         };
 
         let mqtt_handling = async move {
@@ -105,14 +98,14 @@ impl MqttC {
                     Ok(Ok(e)) => {
                         match e {
                             Incoming(Publish(p)) => {
-                                info!(self.logger, "Mqtt event {:?}", p);
+                                info!("Mqtt event {:?}", p);
                                 let topic = std::str::from_utf8(p.topic.deref())
                                     .expect("Unable to get topic");
                                 let payload = std::str::from_utf8(p.payload.deref())
                                     .expect("Unable to get payload");
 
                                 let tx = self.commands_matching(topic, payload);
-                                info!(self.logger, "TX={:?}", tx);
+                                info!("TX={:?}", tx);
                                 for data in tx {
                                     self.client
                                         .0
@@ -127,27 +120,36 @@ impl MqttC {
                         }
                     }
                     Ok(Err(e)) => {
-                        error!(self.logger, "Mqtt error event {:?}", e);
+                        error!("Mqtt error event {:?}", e);
                     }
                     Err(_e) => {} // Timeout
                 }
             }
+            trace!("exiting in while loop from subscribe");
         };
         // Execute futures concurrently
         tokio::join!(ticker_future, mqtt_handling, hass_changes_future);
     }
 
     async fn send_on_event(
-        logger: Logger,
         publisher: AsyncClient,
-        config: Config,
+        config: &Config,
         shutdown: Arc<AtomicBool>,
         receiver: Arc<Mutex<Receiver<(String, String)>>>,
     ) {
         while !shutdown.load(Ordering::SeqCst) {
+            let message;
             // Receive messages from the shared receiver
-            let message = receiver.lock().await.recv().await;
+            // Adding timeout in case config is changed
+            if let Ok(result) = timeout(Duration::from_secs(5), receiver.lock().await.recv()).await {
+                trace!("Message from Hass: {:?}", result);
+                message = result;
+            } else{
+                continue;
+            }
+
             if let Some((key, value)) = message {
+
                 if let Some(device) = config.devices.get(key.as_str()) {
                     let messages = Self::parse_hass_event(config.clone(), device, value);
                     for message in messages {
@@ -166,6 +168,7 @@ impl MqttC {
                 break; // Exit the loop if the channel is closed
             }
         }
+        trace!("exiting in while loop from send_on_event");
     }
 
     fn parse_hass_event(config: Config, device: &Device, value: String) -> Vec<String> {
@@ -197,15 +200,14 @@ impl MqttC {
     }
 
     async fn send_periodic_message(
-        logger: Logger,
         publisher: AsyncClient,
-        config: Config,
+        config: &Config,
         shutdown: Arc<AtomicBool>,
     ) {
-        let mut interval = interval(Duration::from_secs(10)); // Create an interval of 60 seconds
+        let mut interval = interval(Duration::from_secs(10)); // Create an interval of seconds
 
         while !shutdown.load(Ordering::SeqCst) {
-            // trace!(logger, "Each seconds {}", 10);
+            trace!("Each seconds {}", 10);
             //TODO change this to send message over channel and not like how it's done now.
             for device in config.devices.values() {
                 let dt = Utc::now().with_timezone(&FixedOffset::east_opt(2 * 3600).unwrap());
@@ -218,26 +220,25 @@ impl MqttC {
             }
             interval.tick().await;
         }
+        trace!("exiting in while loop from send_periodic_message");
     }
     fn commands_matching(&mut self, topic: &str, payload: &str) -> Vec<Bytes> {
         let device_id = &topic[3..topic.len()];
-        info!(self.logger, "device_id {:?}", device_id);
+        info!("device_id {:?}", device_id);
         let config = &self.config.clone();
-        let logger = self.logger.clone();
         let result = serde_json::from_str(payload)
             .map(move |data: Value| {
                 let d = data.as_object();
                 if let Some(o) = d {
-                    let logger = self.logger.clone();
                     for (key, value) in o {
                         match key.as_str() {
                             "CustomRecv" => {
                                 let tokens = value.to_string();
-                                info!(logger.clone(), "Tokens {:?}", tokens);
+                                info!("Tokens {:?}", tokens);
                                 if tokens.starts_with(r#""event,startup,"#) {
-                                    let command: Box<dyn Command> =
-                                        Box::new(Startup::new(config, device_id));
-                                    return command.execute();
+                                    return Command::new(config, device_id).execute("startup");
+                                } else if tokens.starts_with(r#""event,sleepReached,"#) {
+                                    return Command::new(config, device_id).execute("screensaver");
                                 }
                             }
                             _ => {}
@@ -249,7 +250,7 @@ impl MqttC {
                 }
             })
             .map_err(|e| {
-                error!(logger, "Unable to parse payload  error event {:?}", e);
+                error!("Unable to parse payload  error event {:?}", e);
             });
         result.unwrap_or_else(|_| vec![])
     }

@@ -4,12 +4,11 @@ use futures::{
     channel::mpsc::{channel, Receiver},
     SinkExt, StreamExt,
 };
+use log::{error, info, trace, warn};
 use notify::EventKind::{Create, Modify};
 use notify::{Config, Error, Event, RecommendedWatcher, RecursiveMode, Watcher};
-use slog::{error, info, trace, warn, Logger};
 
 pub struct FolderWatcher {
-    logger: Logger,
     path: Box<Path>,
     files: Vec<String>,
 }
@@ -19,41 +18,36 @@ pub type Result<T> = std::result::Result<T, Error>;
 impl FolderWatcher {
     ///
     /// `Path` must be a folder
-    pub fn from_folder(logger: Logger, path: &Path, files: Vec<String>) -> Self {
+    pub fn from_folder(path: &Path, files: Vec<String>) -> Self {
         let mut new_path = path;
         if path.is_file() {
             warn!(
-                logger,
                 "Expected path to be a folder, instead `{:?}` is a file! ", path
             );
             new_path = path.parent().expect("Unable to get file parent directory");
         }
         info!(
-            logger,
             "NotifyWatcher is register to watch `{:?}` folder, for files :{:?}",
             new_path.to_path_buf().canonicalize(),
             files
         );
         Self {
-            logger,
             path: Box::from(new_path),
             files,
         }
     }
-    pub fn from_file(logger: Logger, path: &Path) -> Self {
+    pub fn from_file(path: &Path) -> Self {
         let mut new_path = path;
         if path.is_file() {
             new_path = path.parent().expect("Unable to get file parent directory");
         }
         let file = path.file_name().unwrap().to_str().unwrap();
         info!(
-            logger,
             "NotifyWatcher is register to watch `{:?}` folder, for files :{:?}",
             new_path.to_path_buf().canonicalize().unwrap(),
             file
         );
         Self {
-            logger,
             path: Box::from(new_path),
             files: vec![String::from(file)],
         }
@@ -82,7 +76,6 @@ impl FolderWatcher {
         let (mut watcher, mut rx) = self.async_watcher()?;
 
         let files = self.files.clone();
-        let logger = self.logger.clone();
 
         // Add a path to be watched. All files and directories at that path
         // will be monitored for changes.
@@ -91,7 +84,7 @@ impl FolderWatcher {
         while let Some(res) = rx.next().await {
             match res {
                 Ok(event) => {
-                    trace!(logger, "Folder event"; "event" => format!("{:?}",event.clone()));
+                    trace!("Folder event {}", format!("{:?}",event.clone()));
                     match event.kind {
                         Modify(_) | Create(_) => {
                             let file_path = event.paths[0].as_path();
@@ -103,7 +96,6 @@ impl FolderWatcher {
                                 .unwrap();
                             if files.contains(&file) {
                                 info!(
-                                    logger,
                                     "File {} was changed, calling callback method!", file
                                 );
                                 (callback)();
@@ -113,8 +105,7 @@ impl FolderWatcher {
                     }
                 }
                 Err(e) => error!(
-                    logger,
-                    "Unable to watch folder for changes!"; "error" => format!("{:?}", e)
+                    "Unable to watch folder for changes! error: {:?}", e
                 ),
             }
         }

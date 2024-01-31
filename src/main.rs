@@ -3,7 +3,7 @@ extern crate indexmap;
 extern crate lazy_static;
 extern crate rumqttc;
 extern crate serde_json;
-extern crate slog;
+
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -11,8 +11,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use std::{env, fs, thread};
+use chrono::Local;
+use fern::Dispatch;
+use log::{debug, error, info, LevelFilter, warn};
 
-use slog::{debug, error, info, o, warn, Drain, Logger};
+
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::{mpsc, Mutex};
 use tokio::task::JoinHandle;
@@ -31,23 +34,53 @@ mod pages;
 mod utils;
 mod watcher;
 
-fn get_logger() -> Logger {
-    let decorator = slog_term::TermDecorator::new().build();
-    let drain = slog_term::CompactFormat::new(decorator).build().fuse();
-    let drain = slog_async::Async::new(drain).build().fuse();
-    Logger::root(
-        drain,
-        o!("component" => "nspanel_server", "version" => "0.1"),
-    )
+fn set_logger() {
+    // Set up logging to console
+    let console_logger = Dispatch::new()
+        .format(|out, message, record| {
+            out.finish(format_args!(
+                "{} [{}][{}:{}] {}",
+                Local::now().format("%Y-%m-%d %H:%M:%S"),
+                record.level(),
+                record.target(),
+                record.line().unwrap_or(0),
+                message
+            ))
+        })
+        .level(LevelFilter::Warn) // Set the default log level for all targets
+        .level_for("nspanel_server", LevelFilter::Trace) // Set the specific log level for current crate
+        .chain(std::io::stdout());
+
+    // Set up logging to file
+    let file_logger = Dispatch::new()
+        .format(|out, message, record| {
+            out.finish(format_args!(
+                "{} [{}][{}:{}] {}",
+                Local::now().format("%Y-%m-%d %H:%M:%S"),
+                record.level(),
+                record.target(),
+                record.line().unwrap_or(0),
+                message
+            ))
+        })
+        .level(LevelFilter::Info)
+        .chain(fern::log_file("output.log").expect("Failed to open log file"));
+
+    // Dispatch logs to both console and file
+    Dispatch::new()
+        .chain(console_logger)
+        .chain(file_logger)
+        .apply()
+        .expect("Failed to initialize logger");
 }
 
 #[tokio::main]
 async fn main() {
-    let logger = get_logger();
+    set_logger();
 
-    let (files, path, config) = get_config(&logger);
+    let (files, path, config) = get_config();
 
-    let folder_watcher = FolderWatcher::from_folder(logger.clone(), path, files);
+    let folder_watcher = FolderWatcher::from_folder(path, files);
 
     futures::executor::block_on(async move {
         let shutdown = Arc::new(AtomicBool::new(false));
@@ -56,59 +89,52 @@ async fn main() {
         let mqqt2hass_receiver = Arc::new(Mutex::new(mqqt2hass_receiver));
         let hass2mqtt_receiver = Arc::new(Mutex::new(hass2mqtt_receiver));
 
-        info!(logger, "Starting Mqtt Client thread.");
+        info!("Starting Mqtt Client thread.");
         let mut mqtt_handle = start_mqtt(
-            MqttC::new(config.clone(), logger.clone()),
+            MqttC::new(config.clone()),
             shutdown.clone(),
             (hass2mqtt_sender.clone(), mqqt2hass_receiver.clone()),
         );
         let mut hass_handle = start_hass(
             config.clone(),
-            logger.clone(),
             shutdown.clone(),
             (mqqt2hass_sender.clone(), hass2mqtt_receiver.clone()),
         );
 
-        let logger_clonned = logger.clone();
         if let Err(e) = folder_watcher
             .watch(move || {
                 let shutdown_cloned = shutdown.clone();
-                let logger = &logger_clonned;
-                info!(logger, "Configuration file has changed ! Restarting.");
+                info!("Configuration file has changed ! Restarting.");
                 shutdown_cloned.store(true, Ordering::SeqCst);
                 // Waiting for Mqtt to gracefully shutdown.
                 while !mqtt_handle.is_finished() {
-                    debug!(logger, "Waiting for Mqtt Client thread to stop.");
+                    debug!("Waiting for Mqtt Client thread to stop.");
                     thread::sleep(Duration::from_millis(1000));
                 }
                 // Waiting for Hass to gracefully shutdown.
                 while !hass_handle.is_finished() {
-                    debug!(logger, "Waiting for HASS thread to stop.");
+                    debug!("Waiting for HASS thread to stop.");
                     thread::sleep(Duration::from_millis(1000));
                 }
 
                 shutdown_cloned.store(false, Ordering::SeqCst);
-                let (_, _, config) = get_config(&logger);
-                info!(logger, "Starting Mqtt Client thread.");
+                let (_, _, config) = get_config();
+                info!("Starting Mqtt Client thread.");
                 mqtt_handle = start_mqtt(
-                    MqttC::new(config.clone(), logger.clone()),
+                    MqttC::new(config.clone()),
                     shutdown.clone(),
                     (hass2mqtt_sender.clone(), mqqt2hass_receiver.clone()),
                 );
-                info!(logger, "Starting HASS Client thread.");
+                info!("Starting HASS Client thread.");
                 hass_handle = start_hass(
                     config.clone(),
-                    logger.clone(),
                     shutdown.clone(),
                     (mqqt2hass_sender.clone(), hass2mqtt_receiver.clone()),
                 );
             })
             .await
         {
-            error!(
-                logger,
-                "Unable to start watching on specified folder. Reason: {:?}", e
-            );
+            error!("Unable to start watching on specified folder. Reason: {:?}", e);
         }
     });
 }
@@ -130,7 +156,7 @@ fn start_mqtt(
     })
 }
 
-fn get_config(logger: &Logger) -> (Vec<String>, &Path, Config) {
+fn get_config() -> (Vec<String>, &'static Path, Arc<Config>) {
     let files = vec![
         env::var("config").unwrap_or("config.yaml".into()),
         env::var("connectivity").unwrap_or("connectivity.yaml".into()),
@@ -140,28 +166,27 @@ fn get_config(logger: &Logger) -> (Vec<String>, &Path, Config) {
     let path = Path::new("./config/");
 
     if !path.exists() {
-        warn!(logger, "File path does not exist");
+        warn!("File path does not exist");
     }
     let config = fs::read_to_string(path.join(&files[0])).expect("Unable to read config file!");
     let devices: BTreeMap<String, Device> =
-        serde_yaml::from_str::<BTreeMap<String, Device>>(&config).unwrap();
+        serde_yaml::from_str::<BTreeMap<String, Device>>(&config).expect("Unable to deserialize config file!");
 
-    info!(logger, "Deserialize yaml: {:?}", devices);
+    info!("Deserialize yaml: {:?}", devices);
 
     let connection_config =
         fs::read_to_string(path.join(&files[1])).expect("Unable to read connectivity file!");
     let connectivity: Connectivity =
-        serde_yaml::from_str::<Connectivity>(&connection_config).unwrap();
+        serde_yaml::from_str::<Connectivity>(&connection_config).expect("Unable to deserialize connectivity file!");
 
     let icons_config =
-        fs::read_to_string(path.join(&files[2])).expect("Unable to read connectivity file!");
+        fs::read_to_string(path.join(&files[2])).expect("Unable to read icons config file!");
     let icons: BTreeMap<String, char> =
-        serde_yaml::from_str::<BTreeMap<String, char>>(&icons_config).unwrap();
+        serde_yaml::from_str::<BTreeMap<String, char>>(&icons_config).expect("Unable to deserialize icons config file!");
 
     // Redact sensitive data
     info!(
-        logger,
-        "Deserialize yaml: {:?}",
+       "Deserialize yaml: {:?}",
         redact(
             format!("{:?}", connectivity).as_str(),
             r##"token:\s\"(.*?)\"|password:\s\"(.*?)\""##
@@ -173,5 +198,5 @@ fn get_config(logger: &Logger) -> (Vec<String>, &Path, Config) {
         devices,
         icons,
     };
-    (files, path, config)
+    (files, path, Arc::new(config))
 }

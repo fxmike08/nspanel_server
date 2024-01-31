@@ -6,7 +6,7 @@ use std::time::Duration;
 use futures::{SinkExt, StreamExt, TryStreamExt};
 use futures::stream::SplitStream;
 use std::string::String;
-use slog::{error, info, Logger};
+use log::{error, info};
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc, Mutex};
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -18,7 +18,7 @@ use crate::config::schema::Config;
 use crate::homeassitant::events::RootEvent;
 
 
-pub fn start_hass(config: Config, logger: Logger, shutdown: Arc<AtomicBool>, channel: (Sender<(String, String)>, Arc<Mutex<Receiver<(String, String)>>>)) -> JoinHandle<()> {
+pub fn start_hass(config: Arc<Config>, shutdown: Arc<AtomicBool>, channel: (Sender<(String, String)>, Arc<Mutex<Receiver<(String, String)>>>)) -> JoinHandle<()> {
     tokio::spawn(async move {
         let (sender, mut receiver) = mpsc::channel::<String>(10);
         let shutdown_clone = shutdown.clone();
@@ -69,7 +69,6 @@ pub fn start_hass(config: Config, logger: Logger, shutdown: Arc<AtomicBool>, cha
                 tokio::spawn(
                     handle_messages(
                         read,
-                        logger.clone(),
                         cloned_sender,
                         shutdown.clone(),
                         sender_to_mqtt.clone(),
@@ -81,17 +80,17 @@ pub fn start_hass(config: Config, logger: Logger, shutdown: Arc<AtomicBool>, cha
                 while let Some(msg) = receiver.recv().await {
                     // Logic to handle received messages
                     if msg == "Reconnect" {
-                        info!(logger.clone(), "HASS - reconnecting on a 5 sec interval.");
+                        info!("HASS - reconnecting on a 5 sec interval.");
                         thread::sleep(Duration::from_secs(5));
                         break;
                     }
                     if msg == "Shutdown" {
-                        info!(logger.clone(), "HASS - shutting down.");
+                        info!("HASS - shutting down.");
                         break;
                     }
                 }
             } else {
-                error!(logger, "HASS - Failed to connect to the WebSocket server");
+                error!("HASS - Failed to connect to the WebSocket server");
             }
         }
     })
@@ -99,7 +98,6 @@ pub fn start_hass(config: Config, logger: Logger, shutdown: Arc<AtomicBool>, cha
 
 pub async fn handle_messages(
     ws_stream: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
-    logger: Logger,
     sender: Sender<String>,
     shutdown: Arc<AtomicBool>,
     sender_to_mqtt: Sender<(String, String)>,
@@ -119,7 +117,7 @@ pub async fn handle_messages(
                     Ok(msg) => {
                         match msg {
                             Message::Text(txt) => {
-                                info!(logger, "Received message: {}", txt);
+                                info!("Received message: {}", txt);
                                 if txt.contains("\"type\":\"event\"") {
                                      let json = serde_yaml::from_str::<RootEvent>(&*txt).unwrap();
                                     // info!(logger, "HASS message serde json {:?}", json);
@@ -138,7 +136,7 @@ pub async fn handle_messages(
                                 // Handle ping/pong messages if necessary
                             }
                             Message::Close(_) => {
-                                info!(logger, "HASS - Connection closed.");
+                                info!("HASS - Connection closed.");
                                 let _ = sender.send("Reconnect".to_string()).await;
                                 break;
                             }
@@ -146,7 +144,7 @@ pub async fn handle_messages(
                         }
                     }
                     Err(e) => {
-                        error!(logger, "HASS - Error receiving message: {:?}", e);
+                        error!("HASS - Error receiving message: {:?}", e);
                         break;
                     }
                 }
