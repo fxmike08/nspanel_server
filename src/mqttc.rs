@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use chrono::{FixedOffset, Timelike, Utc};
-use log::{debug, error, info, trace};
+use log::{error, info, trace};
 use rumqttc::v5::mqttbytes::v5::Packet::Publish;
 use rumqttc::v5::mqttbytes::QoS;
 use rumqttc::v5::Event::Incoming;
@@ -57,7 +57,8 @@ impl MqttC {
     ) {
         trace!("Entering in subscribe method");
         for device in self.config.devices.values() {
-            let _ = self.client
+            let _ = self
+                .client
                 .0
                 .subscribe(&device.mqtt.tx_topic, QoS::AtMostOnce)
                 .await;
@@ -103,11 +104,12 @@ impl MqttC {
                                     .expect("Unable to get topic");
                                 let payload = std::str::from_utf8(p.payload.deref())
                                     .expect("Unable to get payload");
-
-                                let tx = self.commands_matching(topic, payload);
+                                let device_id = &topic[3..topic.len()];
+                                let tx = self.commands_matching(device_id, payload);
                                 info!("RX={:?}", tx);
                                 for data in tx {
-                                    let _ = self.client
+                                    let _ = self
+                                        .client
                                         .0
                                         .publish("tx/nspanel-ds", QoS::ExactlyOnce, false, data)
                                         .await;
@@ -178,7 +180,7 @@ impl MqttC {
             regex.push_str(
                 format!(r#"\B"{}":\{{["\+":\{{]*"s":"(.*?)"\B"#, temp_sensor.entity).as_str(),
             );
-            if let Some(message) = get_room_temperature(&config, &value, temp_sensor) {
+            if let Some(message) = get_room_temperature(&config, &value, temp_sensor, &device.id) {
                 messages.push(message);
             }
         }
@@ -220,9 +222,7 @@ impl MqttC {
         }
         trace!("Exiting interval loop from send_periodic_message");
     }
-    fn commands_matching(&mut self, topic: &str, payload: &str) -> Vec<Bytes> {
-        let device_id = &topic[3..topic.len()];
-        info!("device_id {:?}", device_id);
+    fn commands_matching(&mut self, device_id: &str, payload: &str) -> Vec<Bytes> {
         let config = &self.config.clone();
         let result = serde_json::from_str(payload)
             .map(move |data: Value| {
@@ -232,7 +232,7 @@ impl MqttC {
                         match key.as_str() {
                             "CustomRecv" => {
                                 let tokens = value.to_string();
-                                info!("Tokens {:?}", tokens);
+                                info!("Device_id [{}] Tokens {:?}", device_id, tokens);
                                 if tokens.starts_with(r#""event,startup,"#) {
                                     return Command::new(config, device_id).execute(Page::STARTUP);
                                 } else if tokens.starts_with(r#""event,sleepReached,"#) {
@@ -254,7 +254,7 @@ impl MqttC {
                 }
             })
             .map_err(|e| {
-                error!("Unable to parse payload  error event {:?}", e);
+                error!("Device_id [{}]; Unable to parse payload  error event {:?}", device_id, e);
             });
         result.unwrap_or_else(|_| vec![])
     }

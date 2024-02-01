@@ -1,6 +1,7 @@
 use indexmap::IndexMap;
 use lazy_static::lazy_static;
-use regex::{Captures, Regex};
+use log::{debug, info};
+
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::string::ToString;
@@ -8,6 +9,8 @@ use std::sync::{Arc, RwLock};
 
 /// Hide sensitive data from logs based on regex pattern
 pub fn redact<'a>(string: &'a str, regex: &'a str) -> Cow<'a, str> {
+    use regex::{Captures, Regex};
+
     let rgx = Regex::new(regex).expect("Failed to parse the Regex pattern");
     let res = rgx.replace_all(string, |caps: &Captures| {
         if caps.get(1).is_some() {
@@ -28,6 +31,7 @@ pub const WEATHER_COLORS_KEY: &str = "weather_colors";
 
 lazy_static! {
     pub static ref STORED_STATE: Arc<RwLock<HashMap<String, String>>> =  Arc::new(RwLock::new(HashMap::new()));
+    static ref DEVICE_STATE: Arc<RwLock<HashMap<String, DeviceState>>> =  Arc::new(RwLock::new(HashMap::new()));
 
     pub static ref WEATHER_COLORS: HashMap<String, u32> =
         HashMap::from([
@@ -140,4 +144,75 @@ pub fn get_screensaver_color_output(icons: HashMap<String, String>) -> String {
         }
     }
     color_output
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct DeviceState {
+    pub(crate) temp: Option<String>,
+    pub(crate) humidity: Option<String>,
+    pub(crate) iaq: Option<String>,
+    pub(crate) current_page: Option<String>,
+}
+impl DeviceState {
+    // Update fields with non-None values from the provided object
+    fn update_from(&mut self, other: DeviceState) {
+        if let Some(temp) = other.temp {
+            self.temp = Some(temp);
+        }
+        if let Some(humidity) = other.humidity {
+            self.humidity = Some(humidity);
+        }
+        if let Some(iaq) = other.iaq {
+            self.iaq = Some(iaq);
+        }
+        if let Some(current_page) = other.current_page.clone() {
+            self.current_page = Some(current_page);
+        }
+    }
+
+    // Read, process, and then overwrite the value
+    pub fn read_process_overwrite(key: &str, new_state: DeviceState) {
+        // Read the current value
+        let current_value = {
+            let read_lock = DEVICE_STATE
+                .read()
+                .expect("Failed to acquire read lock on DEVICE_STATE: Lock is poisoned!");
+            read_lock.get(key).cloned()
+        };
+        let device_state: DeviceState;
+        // Process the current value (if needed)
+        if let Some(mut state) = current_value {
+            debug!("Current {} device state {:?}", key, state);
+            // Overwrite the value
+            state.update_from(new_state);
+            device_state = state;
+            debug!("New {} device state {:?}", key, device_state);
+        } else {
+            info!(
+                "Provided device_id: [{}] was not found! Creating new record.",
+                key
+            );
+            device_state = new_state;
+        }
+
+        let mut write_lock = DEVICE_STATE
+            .write()
+            .expect("Failed to acquire write lock on DEVICE_STATE: Lock is poisoned!");
+        write_lock.insert(key.to_string(), device_state);
+    }
+
+    pub fn get_state(id: &str) -> DeviceState {
+        // Read the current value
+        let current_value = {
+            let read_lock = DEVICE_STATE
+                .read()
+                .expect("Failed to acquire read lock on DEVICE_STATE: Lock is poisoned!");
+            read_lock.get(id).cloned()
+        };
+        if let Some(state) = current_value {
+            state
+        } else {
+            DeviceState::default()
+        }
+    }
 }

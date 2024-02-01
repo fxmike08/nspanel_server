@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Device {
     pub module: String,
+    pub id: String,
     pub mqtt: Mqtt,
     pub model: Model,
     pub config: DeviceConfig,
@@ -104,6 +105,7 @@ impl Config {
             .collect()
     }
 
+    #[allow(dead_code)]
     pub fn get_entity_by_name(&self, device_id: &str, name: &str) -> Option<Entity> {
         self.devices
             .clone()

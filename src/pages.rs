@@ -1,7 +1,8 @@
 use crate::config::schema::{Config, Entity};
 use crate::homeassitant::events::{Weather, WeatherEvent, WeatherForecast};
 use crate::utils::{
-    get_screensaver_color_output, get_weather_icon, STORED_STATE, WEATHER_COLORS_KEY, WEATHER_KEY,
+    get_screensaver_color_output, get_weather_icon, DeviceState, STORED_STATE, WEATHER_COLORS_KEY,
+    WEATHER_KEY,
 };
 use std::collections::HashMap;
 
@@ -83,16 +84,30 @@ pub fn get_room_temperature(
     config: &Config,
     value: &String,
     temp_sensor: Entity,
+    device_id: &str,
 ) -> Option<String> {
     use regex::Regex;
 
     let regex = format!(r#"\B"{}":\{{["\+":\{{]*"s":"(.*?)"\B"#, temp_sensor.entity);
     let rgx = Regex::new(regex.as_str()).unwrap();
     if let Ok(caps) = rgx.captures(&*value).ok_or("no match") {
+        let temp = caps.get(1).map_or("", |m| m.as_str());
+        DeviceState::read_process_overwrite(
+            device_id,
+            DeviceState {
+                temp: Some(temp.to_string()),
+                humidity: None,
+                iaq: None,
+                current_page: None,
+            },
+        );
         return Some(format!(
             "temperature~{}~{}°C",
-            config.icons.get("home-thermometer-outline").map_or('\0', |&c| c),
-            caps.get(1).map_or("", |m| m.as_str())
+            config
+                .icons
+                .get("home-thermometer-outline")
+                .map_or('\0', |&c| c),
+            temp
         ));
     }
     None

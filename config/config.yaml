@@ -1,5 +1,6 @@
 nspanel-ds:
   module: nspanel-lovelace-ui
+  id: nspanel-ds
   mqtt:
     rx_topic: "tx/nspanel-ds"
     tx_topic: "rx/nspanel-ds"

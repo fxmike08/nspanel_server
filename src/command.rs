@@ -2,7 +2,7 @@ use bytes::Bytes;
 use chrono::{FixedOffset, Timelike, Utc};
 
 use crate::config::schema::Config;
-use crate::utils::{STORED_STATE, WEATHER_COLORS_KEY, WEATHER_KEY};
+use crate::utils::{DeviceState, STORED_STATE, WEATHER_COLORS_KEY, WEATHER_KEY};
 
 pub struct Command<'a> {
     pub(crate) config: &'a Config,
@@ -32,7 +32,9 @@ impl<'a> Command<'_> {
         let dt = Utc::now().with_timezone(&FixedOffset::east_opt(2 * 3600).unwrap());
         let date = dt.format("%A, %d. %B %Y");
         let time = format!("time~{}:{}~", dt.hour(), dt.minute());
-
+        let temp = DeviceState::get_state(self.device_id)
+            .temp
+            .unwrap_or_default();
         let mut result: Vec<Bytes> = vec![
             "X".into(),
             time.into(),
@@ -49,7 +51,15 @@ impl<'a> Command<'_> {
             .into(),
             "dimmode~10~100~6371".into(),
             "pageType~screensaver".into(),
-            "temperature~~".into(),
+            format!(
+                "temperature~{}~{}°C",
+                self.config
+                    .icons
+                    .get("home-thermometer-outline")
+                    .map_or('\0', |&c| c),
+                temp
+            )
+            .into(),
         ];
         {
             let map = STORED_STATE

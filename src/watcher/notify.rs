@@ -37,6 +37,7 @@ impl FolderWatcher {
             files,
         }
     }
+    #[allow(dead_code)]
     pub fn from_file(path: &Path) -> Self {
         let mut new_path = path;
         if path.is_file() {
