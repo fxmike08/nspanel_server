@@ -1,14 +1,15 @@
 use crate::config::schema::{Config, Entity};
-use crate::homeassitant::events::{Weather, WeatherEvent};
+use crate::homeassitant::events::{Weather, WeatherEvent, WeatherForecast};
 use crate::utils::{
     get_screensaver_color_output, get_weather_icon, STORED_STATE, WEATHER_COLORS_KEY, WEATHER_KEY,
 };
-use chrono::{DateTime, Datelike, FixedOffset};
-use regex::Regex;
-use serde_json::Value;
 use std::collections::HashMap;
 
+use serde_json::Value;
+
 pub fn get_weather_and_colors(config: &Config, value: String, v: &Value) -> (String, String) {
+    use chrono::{DateTime, Datelike};
+
     let weather;
     if value.contains(r#"weather.accuweather":{"s"#) {
         let w: WeatherEvent =
@@ -19,79 +20,59 @@ pub fn get_weather_and_colors(config: &Config, value: String, v: &Value) -> (Str
             serde_json::from_value(v.clone()).expect("Failed to convert to Weather struct");
         weather = w.event;
     }
-    let mut weather_color = "".to_string();
-    let mut weather_update = "".to_string();
+    let mut weather_color = String::default();
+    let mut weather_update = String::default();
     if weather.data.forecast.len() >= 4 {
-        weather_color = get_screensaver_color_output(HashMap::from([
-            ("tMainIcon".to_string(), weather.state.clone()),
+        // Extracting forecast_icons. Eg: Cloudy, Sunny, etc
+        let forecast_icons: HashMap<String, String> = std::iter::once((
+            "tMainIcon".to_string(),
+            weather.state.clone().unwrap_or_default(),
+        ))
+        .chain(weather.data.forecast.iter().enumerate().map(|(i, f)| {
             (
-                "tF1Icon".to_string(),
-                weather.data.forecast[0].condition.clone().unwrap_or("".to_string()),
-            ),
-            (
-                "tF2Icon".to_string(),
-                weather.data.forecast[1].condition.clone().unwrap_or("".to_string()),
-            ),
-            (
-                "tF3Icon".to_string(),
-                weather.data.forecast[2].condition.clone().unwrap_or("".to_string()),
-            ),
-            (
-                "tF4Icon".to_string(),
-                weather.data.forecast[3].condition.clone().unwrap_or("".to_string()),
-            ),
-        ]));
-        let mut datetime: DateTime<FixedOffset> =
-            DateTime::parse_from_rfc3339(weather.data.forecast[0].datetime.clone().unwrap_or("".to_string()).as_str()).expect("Failed to acquire weather.data.forecast[0].datetime from weather forecast!");
-        let weekday_now = datetime.weekday();
+                format!("tF{}Icon", i + 1),
+                f.condition.clone().unwrap_or_default(),
+            )
+        }))
+        .collect();
 
-        datetime =
-            DateTime::parse_from_rfc3339(weather.data.forecast[1].datetime.clone().unwrap_or("".to_string()).as_str()).expect("Failed to acquire weather.data.forecast[1].datetime from weather forecast!");
-        let tomorrow = datetime.weekday();
+        weather_color = get_screensaver_color_output(forecast_icons);
 
-        datetime =
-            DateTime::parse_from_rfc3339(weather.data.forecast[2].datetime.clone().unwrap_or("".to_string()).as_str()).expect("Failed to acquire weather.data.forecast[2].datetime from weather forecast!");
-        let day_after_tomorrow = datetime.weekday();
-        datetime =
-            DateTime::parse_from_rfc3339(weather.data.forecast[3].datetime.clone().unwrap_or("".to_string()).as_str()).expect("Failed to acquire weather.data.forecast[3].datetime from weather forecast!");
-        let day_after_after_tomorrow = datetime.weekday();
+        let extract_weekday = |datetime_str: &str| -> chrono::Weekday {
+            DateTime::parse_from_rfc3339(datetime_str)
+                .ok()
+                .map(|datetime| datetime.weekday())
+                .expect(
+                    "Failed to acquire weather.data.forecast[_].datetime from weather forecast!",
+                )
+        };
 
+        let icons = &config.icons;
+        let format_forecast = |forecast: &WeatherForecast| {
+            format!(
+                "{}~{}~{:.1}°C~{:.1}°C",
+                extract_weekday(&forecast.datetime.clone().unwrap_or_default()),
+                get_weather_icon(forecast.condition.clone().unwrap_or_default(), icons),
+                forecast.temperature.unwrap_or(-99.9),
+                forecast.templow.unwrap_or(-99.9),
+            )
+        };
+
+        let weather_icon = |condition: &str| get_weather_icon(condition.to_string(), icons);
         weather_update = format!(
-            "weatherUpdate~{}~{:.1}°C~{}~{}~{:.1}°C~{:.1}°C~{}~{}~{:.1}°C~{:.1}°C~{}~{}~{:.1}°C~{:.1}°C~{}~{}~{:.1}°C~{:.1}°C",
-            get_weather_icon(weather.state, &config.icons),
+            "weatherUpdate~{}~{:.1}°C~{}~{}~{}~{}",
+            weather_icon(&weather.state.unwrap_or_default()),
             weather.data.temperature.unwrap_or(-99.9),
-            weekday_now,
-            get_weather_icon(
-                weather.data.forecast[0].condition.clone().unwrap_or("".to_string()),
-                &config.icons
-            ),
-            weather.data.forecast[0].temperature.unwrap_or(-99.9),
-            weather.data.forecast[0].templow.unwrap_or(-99.9),
-            tomorrow,
-            get_weather_icon(
-                weather.data.forecast[1].condition.clone().unwrap_or("".to_string()),
-                &config.icons
-            ),
-            weather.data.forecast[1].temperature.unwrap_or(-99.9),
-            weather.data.forecast[1].templow.unwrap_or(-99.9),
-            day_after_tomorrow,
-            get_weather_icon(
-                weather.data.forecast[2].condition.clone().unwrap_or("".to_string()),
-                &config.icons
-            ),
-            weather.data.forecast[2].temperature.unwrap_or(-99.9),
-            weather.data.forecast[2].templow.unwrap_or(-99.9),
-            day_after_after_tomorrow,
-            get_weather_icon(
-                weather.data.forecast[3].condition.clone().unwrap_or("".to_string()),
-                &config.icons
-            ),
-            weather.data.forecast[3].temperature.unwrap_or(-99.9),
-            weather.data.forecast[3].templow.unwrap_or(-99.9),
+            format_forecast(&weather.data.forecast[0]),
+            format_forecast(&weather.data.forecast[1]),
+            format_forecast(&weather.data.forecast[2]),
+            format_forecast(&weather.data.forecast[3]),
         );
     }
     {
-        let mut map = STORED_STATE.write().expect("Failed to acquire write lock on STORED_STATE: Lock is poisoned!");
+        let mut map = STORED_STATE
+            .write()
+            .expect("Failed to acquire write lock on STORED_STATE: Lock is poisoned!");
         map.insert(WEATHER_KEY.to_string(), weather_update.clone());
         map.insert(WEATHER_COLORS_KEY.to_string(), weather_color.clone());
     }
@@ -103,12 +84,14 @@ pub fn get_room_temperature(
     value: &String,
     temp_sensor: Entity,
 ) -> Option<String> {
+    use regex::Regex;
+
     let regex = format!(r#"\B"{}":\{{["\+":\{{]*"s":"(.*?)"\B"#, temp_sensor.entity);
     let rgx = Regex::new(regex.as_str()).unwrap();
     if let Ok(caps) = rgx.captures(&*value).ok_or("no match") {
         return Some(format!(
             "temperature~{}~{}°C",
-            config.icons.get("home-thermometer-outline").unwrap(),
+            config.icons.get("home-thermometer-outline").map_or('\0', |&c| c),
             caps.get(1).map_or("", |m| m.as_str())
         ));
     }

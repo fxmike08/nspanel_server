@@ -8,7 +8,7 @@ use std::sync::{Arc, RwLock};
 
 /// Hide sensitive data from logs based on regex pattern
 pub fn redact<'a>(string: &'a str, regex: &'a str) -> Cow<'a, str> {
-    let rgx = Regex::new(regex).unwrap();
+    let rgx = Regex::new(regex).expect("Failed to parse the Regex pattern");
     let res = rgx.replace_all(string, |caps: &Captures| {
         if caps.get(1).is_some() {
             let g0 = caps.get(0).unwrap();

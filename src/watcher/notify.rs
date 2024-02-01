@@ -22,7 +22,8 @@ impl FolderWatcher {
         let mut new_path = path;
         if path.is_file() {
             warn!(
-                "Expected path to be a folder, instead `{:?}` is a file! ", path
+                "Expected path to be a folder, instead `{:?}` is a file! ",
+                path
             );
             new_path = path.parent().expect("Unable to get file parent directory");
         }
@@ -84,7 +85,7 @@ impl FolderWatcher {
         while let Some(res) = rx.next().await {
             match res {
                 Ok(event) => {
-                    trace!("Folder event {}", format!("{:?}",event.clone()));
+                    trace!("Folder event {}", format!("{:?}", event.clone()));
                     match event.kind {
                         Modify(_) | Create(_) => {
                             let file_path = event.paths[0].as_path();
@@ -95,18 +96,14 @@ impl FolderWatcher {
                                 .into_string()
                                 .unwrap();
                             if files.contains(&file) {
-                                info!(
-                                    "File {} was changed, calling callback method!", file
-                                );
+                                info!("File {} was changed, calling callback method!", file);
                                 (callback)();
                             }
                         }
                         _ => {}
                     }
                 }
-                Err(e) => error!(
-                    "Unable to watch folder for changes! error: {:?}", e
-                ),
+                Err(e) => error!("Unable to watch folder for changes! error: {:?}", e),
             }
         }
 

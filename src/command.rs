@@ -9,17 +9,19 @@ pub struct Command<'a> {
     pub(crate) device_id: &'a str,
 }
 
+pub enum Page {
+    SCREENSAVER,
+    STARTUP,
+}
 
 impl<'a> Command<'_> {
     pub(crate) fn new(config: &'a Config, device_id: &'a str) -> Command<'a> {
         Command { config, device_id }
     }
 
-    pub fn execute (&self, page: &str) -> Vec<Bytes> {
-        match page{
-            "screensaver" | "startup" => {
-                self.screensaver()
-            }
+    pub fn execute(&self, page: Page) -> Vec<Bytes> {
+        match page {
+            Page::SCREENSAVER | Page::STARTUP => self.screensaver(),
             _ => {
                 vec![]
             }
@@ -40,17 +42,19 @@ impl<'a> Command<'_> {
                 self.config
                     .devices
                     .get(self.device_id)
-                    .unwrap()
+                    .expect("Failed to get device_id.")
                     .config
                     .timeout_to_screensaver
             )
-                .into(),
+            .into(),
             "dimmode~10~100~6371".into(),
             "pageType~screensaver".into(),
             "temperature~~".into(),
         ];
         {
-            let map = STORED_STATE.read().expect("Failed to acquire read lock on STORED_STATE: Lock is poisoned!");
+            let map = STORED_STATE
+                .read()
+                .expect("Failed to acquire read lock on STORED_STATE: Lock is poisoned!");
             if let Some(weather) = map.get(WEATHER_KEY) {
                 result.push(Bytes::from(weather.clone()));
             }

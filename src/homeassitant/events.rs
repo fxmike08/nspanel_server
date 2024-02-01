@@ -27,7 +27,7 @@ pub struct Weather {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct WeatherEvent {
     #[serde(alias = "s", alias = "state")]
-    pub state: String,
+    pub state: Option<String>,
     #[serde(alias = "lc")]
     pub last_changed: f64, // Unix epoch time
     #[serde(alias = "c")]
@@ -66,7 +66,7 @@ pub struct WeatherForecast {
     pub uv_index: Option<u8>,
     pub wind_bearing: Option<u16>,
     pub condition: Option<String>,
-    pub temperature: Option<f32,>,
+    pub temperature: Option<f32>,
     pub apparent_temperature: Option<f32>,
     pub templow: Option<f32>,
     pub wind_gust_speed: Option<f32>,

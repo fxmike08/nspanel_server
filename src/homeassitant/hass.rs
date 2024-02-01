@@ -1,24 +1,30 @@
-use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::thread;
-use std::time::Duration;
-use futures::{SinkExt, StreamExt, TryStreamExt};
-use futures::stream::SplitStream;
-use std::string::String;
-use log::{error, info};
-use tokio::net::TcpStream;
-use tokio::sync::{mpsc, Mutex};
-use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::task::JoinHandle;
-use tokio::time::timeout;
-use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
-use tokio_tungstenite::tungstenite::Message;
 use crate::config::schema::Config;
 use crate::homeassitant::events::RootEvent;
+use futures::stream::SplitStream;
+use futures::{SinkExt, StreamExt, TryStreamExt};
+use log::{error, info};
+use std::collections::HashMap;
+use std::string::String;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, RwLock};
+use std::thread;
+use std::time::Duration;
+use tokio::net::TcpStream;
+use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::{mpsc, Mutex};
+use tokio::task::JoinHandle;
+use tokio::time::timeout;
+use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
 
-
-pub fn start_hass(config: Arc<Config>, shutdown: Arc<AtomicBool>, channel: (Sender<(String, String)>, Arc<Mutex<Receiver<(String, String)>>>)) -> JoinHandle<()> {
+pub fn start_hass(
+    config: Arc<Config>,
+    shutdown: Arc<AtomicBool>,
+    channel: (
+        Sender<(String, String)>,
+        Arc<Mutex<Receiver<(String, String)>>>,
+    ),
+) -> JoinHandle<()> {
     tokio::spawn(async move {
         let (sender, mut receiver) = mpsc::channel::<String>(10);
         let shutdown_clone = shutdown.clone();
@@ -33,7 +39,7 @@ pub fn start_hass(config: Arc<Config>, shutdown: Arc<AtomicBool>, channel: (Send
                 "ws://{}:{}/api/websocket",
                 config.connectivity.hass.host, config.connectivity.hass.port
             ))
-                .await
+            .await
             {
                 let (mut write, read) = ws_stream.split();
 
@@ -53,8 +59,7 @@ pub fn start_hass(config: Arc<Config>, shutdown: Arc<AtomicBool>, channel: (Send
                     let _ = write
                         .send(Message::Text(format!(
                             r#"{{ "id": {}, "type": "subscribe_entities", "entity_ids": {:?} }}"#,
-                            seq,
-                            entities
+                            seq, entities
                         )))
                         .await;
                     let mut map = shared_map.write().unwrap();
@@ -66,15 +71,13 @@ pub fn start_hass(config: Arc<Config>, shutdown: Arc<AtomicBool>, channel: (Send
                 // Clone the HashMap
                 let cloned_map = shared_map.read().unwrap().clone();
                 // Spawn a task to handle incoming messages
-                tokio::spawn(
-                    handle_messages(
-                        read,
-                        cloned_sender,
-                        shutdown.clone(),
-                        sender_to_mqtt.clone(),
-                        cloned_map
-                    )
-                );
+                tokio::spawn(handle_messages(
+                    read,
+                    cloned_sender,
+                    shutdown.clone(),
+                    sender_to_mqtt.clone(),
+                    cloned_map,
+                ));
 
                 // This loop listens for any reconnect signals
                 while let Some(msg) = receiver.recv().await {
@@ -101,9 +104,8 @@ pub async fn handle_messages(
     sender: Sender<String>,
     shutdown: Arc<AtomicBool>,
     sender_to_mqtt: Sender<(String, String)>,
-    shared_map_clone: HashMap<String, String>
+    shared_map_clone: HashMap<String, String>,
 ) {
-
     // Handle incoming messages
     let mut incoming = ws_stream.into_stream();
     loop {
@@ -119,12 +121,13 @@ pub async fn handle_messages(
                             Message::Text(txt) => {
                                 info!("Received message: {}", txt);
                                 if txt.contains("\"type\":\"event\"") {
-                                     let json = serde_yaml::from_str::<RootEvent>(&*txt).unwrap();
+                                    let json = serde_yaml::from_str::<RootEvent>(&*txt).unwrap();
                                     // info!(logger, "HASS message serde json {:?}", json);
-                                    if let Some(device_id) = shared_map_clone.get(&*json.id.to_string()){
+                                    if let Some(device_id) =
+                                        shared_map_clone.get(&*json.id.to_string())
+                                    {
                                         let _ = sender_to_mqtt.send((device_id.clone(), txt)).await;
                                     }
-
                                 }
 
                                 // Handle the received text message accordingly

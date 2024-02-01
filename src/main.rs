@@ -4,17 +4,15 @@ extern crate lazy_static;
 extern crate rumqttc;
 extern crate serde_json;
 
-
+use chrono::Local;
+use fern::Dispatch;
+use log::{debug, error, info, warn, LevelFilter};
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use std::{env, fs, thread};
-use chrono::Local;
-use fern::Dispatch;
-use log::{debug, error, info, LevelFilter, warn};
-
 
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::{mpsc, Mutex};
@@ -134,7 +132,10 @@ async fn main() {
             })
             .await
         {
-            error!("Unable to start watching on specified folder. Reason: {:?}", e);
+            error!(
+                "Unable to start watching on specified folder. Reason: {:?}",
+                e
+            );
         }
     });
 }
@@ -170,23 +171,25 @@ fn get_config() -> (Vec<String>, &'static Path, Arc<Config>) {
     }
     let config = fs::read_to_string(path.join(&files[0])).expect("Unable to read config file!");
     let devices: BTreeMap<String, Device> =
-        serde_yaml::from_str::<BTreeMap<String, Device>>(&config).expect("Unable to deserialize config file!");
+        serde_yaml::from_str::<BTreeMap<String, Device>>(&config)
+            .expect("Unable to deserialize config file!");
 
     info!("Deserialize yaml: {:?}", devices);
 
     let connection_config =
         fs::read_to_string(path.join(&files[1])).expect("Unable to read connectivity file!");
-    let connectivity: Connectivity =
-        serde_yaml::from_str::<Connectivity>(&connection_config).expect("Unable to deserialize connectivity file!");
+    let connectivity: Connectivity = serde_yaml::from_str::<Connectivity>(&connection_config)
+        .expect("Unable to deserialize connectivity file!");
 
     let icons_config =
         fs::read_to_string(path.join(&files[2])).expect("Unable to read icons config file!");
     let icons: BTreeMap<String, char> =
-        serde_yaml::from_str::<BTreeMap<String, char>>(&icons_config).expect("Unable to deserialize icons config file!");
+        serde_yaml::from_str::<BTreeMap<String, char>>(&icons_config)
+            .expect("Unable to deserialize icons config file!");
 
     // Redact sensitive data
     info!(
-       "Deserialize yaml: {:?}",
+        "Deserialize yaml: {:?}",
         redact(
             format!("{:?}", connectivity).as_str(),
             r##"token:\s\"(.*?)\"|password:\s\"(.*?)\""##

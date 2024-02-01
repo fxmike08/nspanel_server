@@ -14,20 +14,20 @@ use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::Mutex;
 use tokio::time::{interval, timeout, Duration};
 
-use crate::command::Command;
+use crate::command::{Command, Page};
 use crate::config::schema::{Config, Device};
 use crate::homeassitant::events::RootEvent;
 use crate::pages::{get_room_temperature, get_weather_and_colors};
 
 type Client = (AsyncClient, EventLoop);
 
-pub struct MqttC{
+pub struct MqttC {
     pub config: Arc<Config>,
     pub client: Client,
     pub running: bool,
 }
 
-impl MqttC{
+impl MqttC {
     pub fn new(config: Arc<Config>) -> Self {
         let mut mqttoptions = MqttOptions::new(
             "nspanel_server_rust",
@@ -55,15 +55,15 @@ impl MqttC{
             Arc<Mutex<Receiver<(String, String)>>>,
         ),
     ) {
-        debug!("Entering in subscribe method");
+        trace!("Entering in subscribe method");
         for device in self.config.devices.values() {
-            self.client
+            let _ = self.client
                 .0
                 .subscribe(&device.mqtt.tx_topic, QoS::AtMostOnce)
-                .await
-                .unwrap();
+                .await;
             info!(
-                "Mqtt client is register to listen on topic {}", &device.mqtt.tx_topic
+                "Mqtt client is register to listen on topic {}",
+                &device.mqtt.tx_topic
             );
         }
 
@@ -105,13 +105,12 @@ impl MqttC{
                                     .expect("Unable to get payload");
 
                                 let tx = self.commands_matching(topic, payload);
-                                info!("TX={:?}", tx);
+                                info!("RX={:?}", tx);
                                 for data in tx {
-                                    self.client
+                                    let _ = self.client
                                         .0
                                         .publish("tx/nspanel-ds", QoS::ExactlyOnce, false, data)
-                                        .await
-                                        .unwrap();
+                                        .await;
                                 }
                             }
                             _ => {
@@ -125,7 +124,7 @@ impl MqttC{
                     Err(_e) => {} // Timeout
                 }
             }
-            trace!("exiting in while loop from subscribe");
+            trace!("Exiting async loop from subscribe");
         };
         // Execute futures concurrently
         tokio::join!(ticker_future, mqtt_handling, hass_changes_future);
@@ -141,34 +140,34 @@ impl MqttC{
             let message;
             // Receive messages from the shared receiver
             // Adding timeout in case config is changed
-            if let Ok(result) = timeout(Duration::from_secs(5), receiver.lock().await.recv()).await {
+            if let Ok(result) = timeout(Duration::from_secs(5), receiver.lock().await.recv()).await
+            {
                 trace!("Message from Hass: {:?}", result);
                 message = result;
-            } else{
+            } else {
                 continue;
             }
 
             if let Some((key, value)) = message {
-
                 if let Some(device) = config.devices.get(key.as_str()) {
                     let messages = Self::parse_hass_event(config.clone(), device, value);
+                    info!("Sending message to mqtt channel TX: {:?}", messages);
                     for message in messages {
-                        publisher
+                        let _ = publisher
                             .publish(
                                 device.mqtt.rx_topic.clone(),
                                 QoS::ExactlyOnce,
                                 false,
                                 Bytes::from(message),
                             )
-                            .await
-                            .unwrap();
+                            .await;
                     }
                 }
             } else {
                 break; // Exit the loop if the channel is closed
             }
         }
-        trace!("exiting in while loop from send_on_event");
+        trace!("Exiting async loop from send_on_event");
     }
 
     fn parse_hass_event(config: Config, device: &Device, value: String) -> Vec<String> {
@@ -213,14 +212,13 @@ impl MqttC{
                 let dt = Utc::now().with_timezone(&FixedOffset::east_opt(2 * 3600).unwrap());
                 let time_str = format!("time~{:0>2}:{:0>2}~", dt.hour(), dt.minute());
                 let bytes = Bytes::from(time_str.into_bytes());
-                publisher
+                let _ = publisher
                     .publish(device.mqtt.rx_topic.clone(), QoS::ExactlyOnce, false, bytes)
-                    .await
-                    .unwrap();
+                    .await;
             }
             interval.tick().await;
         }
-        trace!("exiting in while loop from send_periodic_message");
+        trace!("Exiting interval loop from send_periodic_message");
     }
     fn commands_matching(&mut self, topic: &str, payload: &str) -> Vec<Bytes> {
         let device_id = &topic[3..topic.len()];
@@ -236,9 +234,15 @@ impl MqttC{
                                 let tokens = value.to_string();
                                 info!("Tokens {:?}", tokens);
                                 if tokens.starts_with(r#""event,startup,"#) {
-                                    return Command::new(config, device_id).execute("startup");
+                                    return Command::new(config, device_id).execute(Page::STARTUP);
                                 } else if tokens.starts_with(r#""event,sleepReached,"#) {
-                                    return Command::new(config, device_id).execute("screensaver");
+                                    return Command::new(config, device_id)
+                                        .execute(Page::SCREENSAVER);
+                                } else if tokens
+                                    .starts_with(r#""event,buttonPress2,screensaver,bExit,"#)
+                                {
+                                    return Command::new(config, device_id)
+                                        .execute(Page::SCREENSAVER);
                                 }
                             }
                             _ => {}
