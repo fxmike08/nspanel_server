@@ -28,9 +28,9 @@ mod command;
 mod config;
 mod homeassitant;
 mod mqttc;
-mod pages;
 mod utils;
 mod watcher;
+mod cards;
 
 fn set_logger() {
     // Set up logging to console

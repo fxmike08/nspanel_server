@@ -27,7 +27,7 @@ nspanel-ds:
         - entity: alarm_control_panel.alarm
     - type: cardQR
       title: Guest Wifi
-      data: "WIFI:S:SSID;T:WPA;P:****;;"
+      data: "WIFI:S:WiFi ACCESS V;T:WPA;P:ec98-XDEG-n8m3;;"
       entities:
         - entity: iText.test_ssid
           name: Name
@@ -91,7 +91,7 @@ nspanel-ds:
 
 #nspanel-dv:
 #  module: nspanel-lovelace-ui
-#  mqtt:
+#  mqttc:
 #    rx_topic: "rx/nspanel-dv"
 #    tx_topic: "tx/nspanel-dv"
 #  model: "EU"

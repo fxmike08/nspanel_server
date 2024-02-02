@@ -34,7 +34,7 @@ pub struct WeatherEvent {
     pub context: String,
 
     #[serde(alias = "a")]
-    pub data: WeatherEventData,
+    pub data: Option<WeatherEventData>,
 }
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct WeatherEventData {

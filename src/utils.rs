@@ -6,6 +6,7 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::string::ToString;
 use std::sync::{Arc, RwLock};
+use crate::cards::Card;
 
 /// Hide sensitive data from logs based on regex pattern
 pub fn redact<'a>(string: &'a str, regex: &'a str) -> Cow<'a, str> {
@@ -145,13 +146,26 @@ pub fn get_screensaver_color_output(icons: HashMap<String, String>) -> String {
     }
     color_output
 }
+#[derive(Debug, Clone)]
+pub struct Page {
+    pub(crate) current: Card,
+    pub(crate) previous: Card,
+}
+impl Default for Page {
+    fn default() -> Self {
+        Page {
+            current: Card::Screensaver,
+            previous: Card::Screensaver,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct DeviceState {
     pub(crate) temp: Option<String>,
     pub(crate) humidity: Option<String>,
     pub(crate) iaq: Option<String>,
-    pub(crate) current_page: Option<String>,
+    pub(crate) page: Option<Page>,
 }
 impl DeviceState {
     // Update fields with non-None values from the provided object
@@ -165,12 +179,12 @@ impl DeviceState {
         if let Some(iaq) = other.iaq {
             self.iaq = Some(iaq);
         }
-        if let Some(current_page) = other.current_page.clone() {
-            self.current_page = Some(current_page);
+        if let Some(page) = other.page.clone() {
+            self.page = Some(page);
         }
     }
 
-    // Read, process, and then overwrite the value
+    // Read, model, and then overwrite the value
     pub fn read_process_overwrite(key: &str, new_state: DeviceState) {
         // Read the current value
         let current_value = {
@@ -179,7 +193,7 @@ impl DeviceState {
                 .expect("Failed to acquire read lock on DEVICE_STATE: Lock is poisoned!");
             read_lock.get(key).cloned()
         };
-        let device_state: DeviceState;
+        let mut device_state: DeviceState;
         // Process the current value (if needed)
         if let Some(mut state) = current_value {
             debug!("Current {} device state {:?}", key, state);
@@ -193,6 +207,7 @@ impl DeviceState {
                 key
             );
             device_state = new_state;
+            device_state.page = Some(Page::default()); //Making default page
         }
 
         let mut write_lock = DEVICE_STATE
