@@ -1,3 +1,6 @@
+mod model;
+
+use std::collections::HashMap;
 use bytes::Bytes;
 use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -13,11 +16,14 @@ use serde_json::Value;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::Mutex;
 use tokio::time::{interval, timeout, Duration};
+use crate::cards::Card;
 
 use crate::command::{Command, Page};
 use crate::config::schema::{Config, Device};
 use crate::homeassitant::events::RootEvent;
-use crate::pages::{get_room_temperature, get_weather_and_colors};
+use crate::mqttc::model::screensaver::Screensaver;
+use crate::utils;
+
 
 type Client = (AsyncClient, EventLoop);
 
@@ -153,7 +159,7 @@ impl MqttC {
             if let Some((key, value)) = message {
                 if let Some(device) = config.devices.get(key.as_str()) {
                     let messages = Self::parse_hass_event(config.clone(), device, value);
-                    info!("Sending message to mqtt channel TX: {:?}", messages);
+                    info!("Sending message to mqttc channel TX: {:?}", messages);
                     for message in messages {
                         let _ = publisher
                             .publish(
@@ -173,32 +179,36 @@ impl MqttC {
     }
 
     fn parse_hass_event(config: Config, device: &Device, value: String) -> Vec<String> {
-        let mut regex = String::new();
-        let mut messages = vec![];
-        // TemperatureSensor
-        if let Some(temp_sensor) = device.get_entity_by_name(&"temperatureSensor") {
-            regex.push_str(
-                format!(r#"\B"{}":\{{["\+":\{{]*"s":"(.*?)"\B"#, temp_sensor.entity).as_str(),
-            );
-            if let Some(message) = get_room_temperature(&config, &value, temp_sensor, &device.id) {
-                messages.push(message);
-            }
-        }
+        use utils::DeviceState;
+
+        let mut messages: HashMap<Card, String> = HashMap::default();
+
+        let device_state = DeviceState::get_state(&device.id);
+
+        // Getting RootEvent
         let json = serde_yaml::from_str::<RootEvent>(&*value).unwrap();
-        // Weather
-        if let Some(weather) = device.get_entity_by_name(&"weather") {
-            if let Some(v) = json.event.entities.get(&*weather.entity) {
-                // Removing cases when weather is disabled/unavailable. Unable to map to existing event struct
-                if !v.to_string().contains(r#""a":{"restored":true"#) {
-                    let (weather_color, weather_update) = get_weather_and_colors(&config, value, v);
-                    messages.push(weather_update);
-                    messages.push(weather_color);
-                }
-            }
+
+        // Helper closure that takes card and vec<String> and add to messages
+        // We are using this closure to pass to the model methods, so we don't care about the
+        // current page.
+        let mut insert_message = |card: Card, result: Vec<String> | {
+            let messages_to_insert = result.into_iter().filter(|s| !s.is_empty()).collect::<Vec<String>>();
+            messages.extend(messages_to_insert.into_iter().map(|s| (card.clone(), s)));
+        };
+
+        Screensaver::process_temperature_sensor(&config, &value, &device, &mut insert_message);
+        Screensaver::process_weather(&config, device, value, json, &mut insert_message);
+
+        // Handle model only if are for the current page
+        if let Some(&ref current_page) = device_state.page.as_ref().map(|p| &p.current){
+            messages.iter().filter(|(c,_)| **c == device_state.page.clone().unwrap().current).map(|(_,s)| s.clone()).collect()
+        } else{
+            messages.values().map(|s| s.clone()).collect::<Vec<_>>()
         }
 
-        messages
+
     }
+
 
     async fn send_periodic_message(
         publisher: AsyncClient,
@@ -254,7 +264,10 @@ impl MqttC {
                 }
             })
             .map_err(|e| {
-                error!("Device_id [{}]; Unable to parse payload  error event {:?}", device_id, e);
+                error!(
+                    "Device_id [{}]; Unable to parse payload  error event {:?}",
+                    device_id, e
+                );
             });
         result.unwrap_or_else(|_| vec![])
     }

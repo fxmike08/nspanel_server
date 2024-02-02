@@ -32,6 +32,7 @@ impl<'a> Command<'_> {
         let dt = Utc::now().with_timezone(&FixedOffset::east_opt(2 * 3600).unwrap());
         let date = dt.format("%A, %d. %B %Y");
         let time = format!("time~{}:{}~", dt.hour(), dt.minute());
+        let device = DeviceState::get_state(self.device_id);
         let temp = DeviceState::get_state(self.device_id)
             .temp
             .unwrap_or_default();

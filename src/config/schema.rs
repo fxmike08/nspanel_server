@@ -76,7 +76,7 @@ pub struct Hass {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Connectivity {
-    #[serde(alias = "MQTT", alias = "mqtt")]
+    #[serde(alias = "MQTT", alias = "mqttc")]
     pub mqtt: MqttClient,
     #[serde(alias = "hass")]
     pub hass: Hass,
