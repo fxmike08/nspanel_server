@@ -91,7 +91,7 @@ nspanel-ds:
 
 #nspanel-dv:
 #  module: nspanel-lovelace-ui
-#  mqttc:
+#  mqtt:
 #    rx_topic: "rx/nspanel-dv"
 #    tx_topic: "tx/nspanel-dv"
 #  model: "EU"
