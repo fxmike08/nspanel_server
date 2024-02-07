@@ -24,13 +24,13 @@ use crate::mqttc::MqttC;
 use crate::utils::redact;
 use crate::watcher::notify::FolderWatcher;
 
+mod cards;
 mod command;
 mod config;
 mod homeassitant;
 mod mqttc;
 mod utils;
 mod watcher;
-mod cards;
 
 fn set_logger() {
     // Set up logging to console
@@ -41,7 +41,7 @@ fn set_logger() {
                 Local::now().format("%Y-%m-%d %H:%M:%S"),
                 record.level(),
                 record.target(),
-                record.line().unwrap_or(0),
+                record.line().unwrap_or(Default::default()),
                 message
             ))
         })

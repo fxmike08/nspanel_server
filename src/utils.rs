@@ -2,11 +2,11 @@ use indexmap::IndexMap;
 use lazy_static::lazy_static;
 use log::{debug, info};
 
+use crate::cards::Card;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::string::ToString;
 use std::sync::{Arc, RwLock};
-use crate::cards::Card;
 
 /// Hide sensitive data from logs based on regex pattern
 pub fn redact<'a>(string: &'a str, regex: &'a str) -> Cow<'a, str> {
@@ -167,6 +167,7 @@ pub struct DeviceState {
     pub(crate) iaq: Option<String>,
     pub(crate) page: Option<Page>,
 }
+
 impl DeviceState {
     // Update fields with non-None values from the provided object
     fn update_from(&mut self, other: DeviceState) {

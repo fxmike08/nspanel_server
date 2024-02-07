@@ -1,3 +1,4 @@
+use crate::cards::Card;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -119,6 +120,40 @@ impl Config {
                 })
             })
     }
+
+    #[allow(dead_code)]
+    pub fn get_card_by_name(&self, device_id: &str, card: &str) -> Option<Cards> {
+        self.devices
+            .clone()
+            .into_iter()
+            .find(|(key, _)| key.eq(device_id))
+            .and_then(|(_, device)| device.cards.into_iter().find(|c| c.type_.eq(card)))
+    }
+
+    #[allow(dead_code)]
+    pub fn get_adjacent_card(&self, device_id: &str, card: &str, forward: bool) -> Option<Cards> {
+        if let Some((_, device)) = self
+            .devices
+            .iter()
+            .find(|(key, _)| key.as_str() == device_id)
+        {
+            if let Some((index, _)) = device
+                .get_cards()
+                .iter()
+                .enumerate()
+                .find(|(_, c)| c.type_ == card)
+            {
+                let device_cards = &device.get_cards();
+                let new_index = if forward {
+                    (index + 1) % device_cards.len() // Next index, wrapping around at the end
+                } else {
+                    (index - 1) % device_cards.len() // Previous index, wrapping around at the beginning
+                };
+                return Some(device_cards[new_index].clone());
+            }
+        }
+        None
+    }
 }
 
 impl Device {
@@ -128,5 +163,14 @@ impl Device {
                 .into_iter()
                 .find(|e| e.name.as_deref() == Some(name))
         })
+    }
+
+    /// Get list of card pages to display without `screensaver`.
+    pub fn get_cards(&self) -> Vec<Cards> {
+        self.cards
+            .iter()
+            .filter(|&card| card.type_.ne(Card::Screensaver.as_str()))
+            .map(|card| card.clone())
+            .collect()
     }
 }

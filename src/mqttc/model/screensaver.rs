@@ -1,28 +1,41 @@
 use crate::cards::Card;
 use crate::config::schema::{Config, Device, Entity};
-use serde_json::Value;
 use crate::homeassitant::events::RootEvent;
+use serde_json::Value;
 
 /// The Screensaver card page.
 /// This is responsible for transforming data into mqtt message that can be translated by
 /// Nspanel display.
-pub struct Screensaver{}
+pub struct Screensaver {}
 
 impl Screensaver {
-
     /// Process the temperature sensor and pass back the result into the insert_message function
     /// For more details look on `Screensaver::get_room_temperature()` function.
-    pub fn process_temperature_sensor<F>(config: &Config, value: &str, device: &Device, mut insert_message: F) where
+    pub fn process_temperature_sensor<F>(
+        config: &Config,
+        value: &str,
+        device: &Device,
+        mut insert_message: F,
+    ) where
         F: FnMut(Card, Vec<String>),
     {
         if let Some(temp_sensor) = device.get_entity_by_name(&"temperatureSensor") {
-            insert_message(Card::Screensaver, Screensaver::get_room_temperature(config, value, temp_sensor, &device.id));
+            insert_message(
+                Card::Screensaver,
+                Screensaver::get_room_temperature(config, value, temp_sensor, &device.id),
+            );
         }
     }
 
     /// Process the weather and pass back the result into the insert_message function.
     /// For more details look on `Screensaver::get_weather_and_colors()` function.
-    pub fn process_weather<F>(config: &Config, device: &Device, value: String, json: RootEvent, mut insert_message: F) where
+    pub fn process_weather<F>(
+        config: &Config,
+        device: &Device,
+        value: String,
+        json: RootEvent,
+        mut insert_message: F,
+    ) where
         F: FnMut(Card, Vec<String>),
     {
         // Weather
@@ -32,12 +45,14 @@ impl Screensaver {
                 if !v.to_string().contains(r#""a":{"restored":true"#)
                     && !v.to_string().contains(r#"s":"unavailable"#)
                 {
-                    insert_message(Card::Screensaver, Screensaver::get_weather_and_colors(&config, value, v));
+                    insert_message(
+                        Card::Screensaver,
+                        Screensaver::get_weather_and_colors(&config, value, v),
+                    );
                 }
             }
         }
     }
-
 
     /// Extract the sensor temperature value and returning a vector that has a specific message format.
     /// * Message format
@@ -50,9 +65,8 @@ impl Screensaver {
         temp_sensor: Entity,
         device_id: &str,
     ) -> Vec<String> {
-        use regex::Regex;
         use crate::utils::DeviceState;
-
+        use regex::Regex;
 
         let regex = format!(r#"\B"{}":\{{["\+":\{{]*"s":"(.*?)"\B"#, temp_sensor.entity);
         let rgx = Regex::new(regex.as_str()).unwrap();
@@ -89,12 +103,12 @@ impl Screensaver {
     /// ```
     ///
     fn get_weather_and_colors(config: &Config, value: String, v: &Value) -> Vec<String> {
-        use chrono::{DateTime, Datelike};
-        use crate::utils::{
-            get_screensaver_color_output, get_weather_icon, STORED_STATE,
-            WEATHER_COLORS_KEY, WEATHER_KEY,
-        };
         use crate::homeassitant::events::{Weather, WeatherEvent, WeatherForecast};
+        use crate::utils::{
+            get_screensaver_color_output, get_weather_icon, STORED_STATE, WEATHER_COLORS_KEY,
+            WEATHER_KEY,
+        };
+        use chrono::{DateTime, Datelike};
         use std::collections::HashMap;
 
         let weather;
@@ -116,13 +130,13 @@ impl Screensaver {
                 "tMainIcon".to_string(),
                 weather.state.clone().unwrap_or_default(),
             ))
-                .chain(data.forecast.iter().enumerate().map(|(i, f)| {
-                    (
-                        format!("tF{}Icon", i + 1),
-                        f.condition.clone().unwrap_or_default(),
-                    )
-                }))
-                .collect();
+            .chain(data.forecast.iter().enumerate().map(|(i, f)| {
+                (
+                    format!("tF{}Icon", i + 1),
+                    f.condition.clone().unwrap_or_default(),
+                )
+            }))
+            .collect();
 
             weather_color = get_screensaver_color_output(forecast_icons);
 
@@ -165,10 +179,10 @@ impl Screensaver {
             map.insert(WEATHER_COLORS_KEY.to_string(), weather_color.clone());
         }
         let mut result = vec![];
-        if !weather_color.is_empty(){
+        if !weather_color.is_empty() {
             result.push(weather_color);
         }
-        if !weather_update.is_empty(){
+        if !weather_update.is_empty() {
             result.push(weather_update);
         }
         result
