@@ -1,3 +1,4 @@
+use crate::cards::Card;
 use bytes::Bytes;
 use chrono::{FixedOffset, Timelike, Utc};
 
@@ -10,8 +11,26 @@ pub struct Command<'a> {
 }
 
 pub enum Page {
-    SCREENSAVER,
-    STARTUP,
+    Screensaver,
+    Startup,
+    ExistScreensaver,
+    CardAlarm,
+    CardQR,
+}
+impl From<&str> for Page {
+    fn from(value: &str) -> Self {
+        match value.to_lowercase().as_str() {
+            "screensaver" => Self::Screensaver,
+            "startup" => Self::Startup,
+            "existscreensaver" => Self::ExistScreensaver,
+            "cardalarm" => Self::CardAlarm,
+            "cardqr" => Self::CardQR,
+            _ => panic!(
+                "Invalid string representation for Page::{} enum variant",
+                value
+            ),
+        }
+    }
 }
 
 impl<'a> Command<'_> {
@@ -21,18 +40,60 @@ impl<'a> Command<'_> {
 
     pub fn execute(&self, page: Page) -> Vec<Bytes> {
         match page {
-            Page::SCREENSAVER | Page::STARTUP => self.screensaver(),
+            Page::Screensaver | Page::Startup => self.screensaver(),
+            Page::ExistScreensaver => self.exist_screensaver(),
+            Page::CardAlarm => self.card_alarm(),
+            Page::CardQR => self.qr_code(),
             _ => {
                 vec![]
             }
         }
     }
 
+    fn exist_screensaver(&self) -> Vec<Bytes> {
+        let mut device = DeviceState::get_state(self.device_id);
+        if let Some(mut page) = device.page.take() {
+            if page.current == page.previous && page.current == Card::Screensaver {
+                if let Some(first_card) = self
+                    .config
+                    .devices
+                    .get(self.device_id)
+                    .expect("Failed to get device_id.")
+                    .get_cards()
+                    .get(0)
+                    .map(|card| card.type_.clone())
+                {
+                    page.current = Card::from(first_card);
+                }
+            }
+            device.page = Some(page);
+        }
+        DeviceState::read_process_overwrite(self.device_id, device);
+
+        self.qr_code() // TODO FIX ME
+                       // vec![card]
+    }
+
+    fn card_alarm(&self) -> Vec<Bytes> {
+        let mut r_page = Bytes::default();
+        let mut r_update = Bytes::default();
+        let mut device = DeviceState::get_state(self.device_id);
+        if let Some(mut page) = device.page.take() {
+            page.previous = page.current;
+            page.current = Card::CardAlarm;
+        }
+        DeviceState::read_process_overwrite(self.device_id, device);
+
+        r_page = format!("pageType~{}", Card::CardAlarm.as_str()).into();
+        // TODO FIX the following, read this from hass
+        r_update = format!("entityUpd~alarm_control_panel.alarm~1|1~Armat acasa~arm_home~Armat plecat~arm_away~Armat noaptea~arm_night~Armat vacanta~arm_vacation~\0~3334~disable~disable~").into();
+
+        vec![r_page, r_update]
+    }
     fn screensaver(&self) -> Vec<Bytes> {
         let dt = Utc::now().with_timezone(&FixedOffset::east_opt(2 * 3600).unwrap());
         let date = dt.format("%A, %d. %B %Y");
-        let time = format!("time~{}:{}~", dt.hour(), dt.minute());
-        let device = DeviceState::get_state(self.device_id);
+        let time = format!("time~{:0>2}:{:0>2}", dt.hour(), dt.minute());
         let temp = DeviceState::get_state(self.device_id)
             .temp
             .unwrap_or_default();
@@ -74,5 +135,46 @@ impl<'a> Command<'_> {
             }
         }
         result
+    }
+
+    fn qr_code(&self) -> Vec<Bytes> {
+        let device_state = DeviceState::get_state(self.device_id);
+
+        let mut r_page = Bytes::default();
+        let mut r_update = Bytes::default();
+        if let Some(page) = device_state.page {
+            r_page = format!("pageType~{}", page.current.as_str()).into();
+
+            if let Some(config_card) = self
+                .config
+                .get_card_by_name(self.device_id, page.current.as_str())
+            {
+                // 0|0 means it's only one element
+                // 1|1 means we have multiple cards
+                // 2|0 is like Up button
+                r_update = format!(
+                    "entityUpd~{}~1|1~{}~text~{}~{}~{}~Name~{}~text~{}~{}~{}~Password~{}",
+                    config_card.title.unwrap_or_default(),
+                    config_card.data.unwrap_or_default(),
+                    config_card.entities[0].entity,
+                    self.config
+                        .icons
+                        .get(&config_card.entities[0].icon.clone().unwrap_or_default())
+                        .map_or('\0', |&c| c), // Icon
+                    17299, //Color
+                    config_card.entities[0].name.clone().unwrap_or_default(),
+                    config_card.entities[1].entity,
+                    self.config
+                        .icons
+                        .get(&config_card.entities[1].icon.clone().unwrap_or_default())
+                        .map_or('\0', |&c| c), // Icon
+                    17299, //Color
+                    config_card.entities[1].name.clone().unwrap_or_default()
+                )
+                .into();
+            }
+        }
+
+        vec![r_page, r_update]
     }
 }

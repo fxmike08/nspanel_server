@@ -1,11 +1,12 @@
 mod model;
 
-use std::collections::HashMap;
 use bytes::Bytes;
+use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+use crate::cards::Card;
 use chrono::{FixedOffset, Timelike, Utc};
 use log::{error, info, trace};
 use rumqttc::v5::mqttbytes::v5::Packet::Publish;
@@ -16,14 +17,12 @@ use serde_json::Value;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::Mutex;
 use tokio::time::{interval, timeout, Duration};
-use crate::cards::Card;
 
 use crate::command::{Command, Page};
 use crate::config::schema::{Config, Device};
 use crate::homeassitant::events::RootEvent;
 use crate::mqttc::model::screensaver::Screensaver;
 use crate::utils;
-
 
 type Client = (AsyncClient, EventLoop);
 
@@ -191,8 +190,11 @@ impl MqttC {
         // Helper closure that takes card and vec<String> and add to messages
         // We are using this closure to pass to the model methods, so we don't care about the
         // current page.
-        let mut insert_message = |card: Card, result: Vec<String> | {
-            let messages_to_insert = result.into_iter().filter(|s| !s.is_empty()).collect::<Vec<String>>();
+        let mut insert_message = |card: Card, result: Vec<String>| {
+            let messages_to_insert = result
+                .into_iter()
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<String>>();
             messages.extend(messages_to_insert.into_iter().map(|s| (card.clone(), s)));
         };
 
@@ -200,15 +202,16 @@ impl MqttC {
         Screensaver::process_weather(&config, device, value, json, &mut insert_message);
 
         // Handle model only if are for the current page
-        if let Some(&ref current_page) = device_state.page.as_ref().map(|p| &p.current){
-            messages.iter().filter(|(c,_)| **c == device_state.page.clone().unwrap().current).map(|(_,s)| s.clone()).collect()
-        } else{
+        if let Some(&ref current_page) = device_state.page.as_ref().map(|p| &p.current) {
+            messages
+                .iter()
+                .filter(|(c, _)| **c == device_state.page.clone().unwrap().current)
+                .map(|(_, s)| s.clone())
+                .collect()
+        } else {
             messages.values().map(|s| s.clone()).collect::<Vec<_>>()
         }
-
-
     }
-
 
     async fn send_periodic_message(
         publisher: AsyncClient,
@@ -234,6 +237,7 @@ impl MqttC {
     }
     fn commands_matching(&mut self, device_id: &str, payload: &str) -> Vec<Bytes> {
         let config = &self.config.clone();
+        let command = Command::new(config, device_id);
         let result = serde_json::from_str(payload)
             .map(move |data: Value| {
                 let d = data.as_object();
@@ -244,15 +248,30 @@ impl MqttC {
                                 let tokens = value.to_string();
                                 info!("Device_id [{}] Tokens {:?}", device_id, tokens);
                                 if tokens.starts_with(r#""event,startup,"#) {
-                                    return Command::new(config, device_id).execute(Page::STARTUP);
+                                    return command.execute(Page::Startup);
                                 } else if tokens.starts_with(r#""event,sleepReached,"#) {
-                                    return Command::new(config, device_id)
-                                        .execute(Page::SCREENSAVER);
+                                    return command.execute(Page::Screensaver);
                                 } else if tokens
                                     .starts_with(r#""event,buttonPress2,screensaver,bExit,"#)
                                 {
-                                    return Command::new(config, device_id)
-                                        .execute(Page::SCREENSAVER);
+                                    // Get previous page and display it.
+                                    return command.execute(Page::ExistScreensaver);
+                                } else if let Some(captured) =
+                                    regex::Regex::new(r#"event,buttonPress2,(.*?),(bNext|bPrev)"#)
+                                        .expect("Failed to parse the regex for bNext action")
+                                        .captures(&tokens)
+                                {
+                                    if let Some(group) = captured.get(1) {
+                                        // this is the group for current page
+                                        if let Some(card) = config.get_adjacent_card(
+                                            device_id,
+                                            group.as_str(),
+                                            captured.get(2).unwrap().as_str().eq("bNext"),
+                                        ) {
+                                            return command
+                                                .execute(Page::from(card.type_.as_str()));
+                                        }
+                                    }
                                 }
                             }
                             _ => {}
