@@ -166,7 +166,7 @@ pub struct AlarmState {
     pub(crate) supported_mode: String,
     pub(crate) code_arm_required: Option<bool>,
     pub(crate) entity: String,
-    pub(crate) icon: (String, u16), // (icon, color)
+    pub(crate) icon: (String, u32), // (icon, color)
 }
 
 #[derive(Debug, Clone, Default)]
@@ -201,7 +201,7 @@ impl DeviceState {
                 if !alarm.supported_mode.is_empty() {
                     stored.supported_mode = alarm.supported_mode;
                 }
-                if !alarm.code_arm_required.is_some() {
+                if alarm.code_arm_required.is_some() {
                     stored.code_arm_required = alarm.code_arm_required;
                 }
                 if !alarm.icon.0.is_empty() {

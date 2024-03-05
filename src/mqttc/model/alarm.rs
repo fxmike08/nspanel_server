@@ -80,17 +80,94 @@ impl Alarm {
         }
         alarm_state.state = alarm_d.state.clone().unwrap_or_default();
 
-        let mut icon: (String, u16) = ("".to_string(), 0);
+        let mut icon: (String, u32) = ("".to_string(), 0);
+
+        let _device_state = DeviceState::get_state(&device.id);
+        let mut code_arm_required = true;
+        if let Some(alarm) = _device_state.alarm {
+            code_arm_required = alarm.code_arm_required.unwrap_or(true); // show by default numkey
+        }
+
+        let mut numkey = true;
+        let mut falshing = false;
         if let Some(ref state) = alarm_d.state {
-            if state == "disarmed" {
-                icon = (
-                    config
-                        .icons
-                        .get("shield-off")
-                        .map_or('\0', |&c| c)
-                        .to_string(),
-                    3334,
-                );
+            match state.as_str() {
+                "disarmed" => {
+                    icon = (
+                        config
+                            .icons
+                            .get("shield-off")
+                            .map_or('\0', |&c| c)
+                            .to_string(),
+                        3334,
+                    );
+                    if !code_arm_required {
+                        numkey = false;
+                    }
+                }
+                "armed_home" => {
+                    icon = (
+                        config
+                            .icons
+                            .get("shield-home")
+                            .map_or('\0', |&c| c)
+                            .to_string(),
+                        55907,
+                    );
+                }
+                "armed_away" => {
+                    icon = (
+                        config
+                            .icons
+                            .get("shield-lock")
+                            .map_or('\0', |&c| c)
+                            .to_string(),
+                        55907,
+                    );
+                }
+                "armed_night" => {
+                    icon = (
+                        config
+                            .icons
+                            .get("weather-night")
+                            .map_or('\0', |&c| c)
+                            .to_string(),
+                        55907,
+                    );
+                }
+                "armed_vacation" => {
+                    icon = (
+                        config
+                            .icons
+                            .get("shield-airplane")
+                            .map_or('\0', |&c| c)
+                            .to_string(),
+                        55907,
+                    );
+                }
+                "pending" | "arming" =>{
+                    icon = (
+                        config
+                            .icons
+                            .get("shield")
+                            .map_or('\0', |&c| c)
+                            .to_string(),
+                        62848,
+                    );
+                    falshing = true;
+                }
+                "triggered" =>{
+                    icon = (
+                        config
+                            .icons
+                            .get("bell-ring")
+                            .map_or('\0', |&c| c)
+                            .to_string(),
+                        55907,
+                    );
+                    falshing = true;
+                }
+                _ => {}
             }
         }
         alarm_state.icon = icon;
@@ -100,8 +177,10 @@ impl Alarm {
         let device_state = DeviceState::get_state(&device.id);
         if let Some(alarm) = device_state.alarm {
             let r_update = format!(
-                "entityUpd~{}~1|1~{}~{}~{}~disable~disable~",
-                alarm.entity, alarm.supported_mode, alarm.icon.0, alarm.icon.1
+                "entityUpd~{}~1|1~{}~{}~{}~{}~{}~",
+                alarm.entity, alarm.supported_mode, alarm.icon.0, alarm.icon.1,
+                if !numkey { "disable" } else { "enable" },
+                if falshing { "enable" } else { "disable" },
             )
             .into();
             return vec![r_update];

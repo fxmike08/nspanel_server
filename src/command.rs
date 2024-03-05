@@ -17,6 +17,7 @@ pub enum Page {
     CardAlarm,
     CardQR,
 }
+
 impl From<&str> for Page {
     fn from(value: &str) -> Self {
         match value.to_lowercase().as_str() {
@@ -52,6 +53,7 @@ impl<'a> Command<'_> {
 
     fn exist_screensaver(&self) -> Vec<Bytes> {
         let mut device = DeviceState::get_state(self.device_id);
+        let mut current_page = Page::Screensaver ; // this may never be used
         if let Some(mut page) = device.page.take() {
             if page.current == page.previous && page.current == Card::Screensaver {
                 if let Some(first_card) = self
@@ -64,14 +66,16 @@ impl<'a> Command<'_> {
                     .map(|card| card.type_.clone())
                 {
                     page.current = Card::from(first_card);
+                    current_page =  Page::from(page.current.as_str());
                 }
+            } else {
+                current_page = Page::from(page.clone().previous.as_str());
             }
+
             device.page = Some(page);
         }
         DeviceState::read_process_overwrite(self.device_id, device);
-
-        self.qr_code() // TODO FIX ME
-                       // vec![card]
+        self.execute(current_page)
     }
 
     fn card_alarm(&self) -> Vec<Bytes> {
@@ -81,21 +85,117 @@ impl<'a> Command<'_> {
         if let Some(mut page) = device.page.take() {
             page.previous = page.current;
             page.current = Card::CardAlarm;
+            device.page = Some(page);
         }
+        DeviceState::read_process_overwrite(self.device_id, device.clone());
 
         r_page = format!("pageType~{}", Card::CardAlarm.as_str()).into();
         if let Some(alarm) = &device.alarm {
+            let mut icon: (String, u32) = ("".to_string(), 0);
+            let code_arm_required = alarm.code_arm_required.unwrap_or(true); // show by default numkey
+            let mut numkey = true;
+            let mut falshing = false;
+
+            match alarm.state.as_str() {
+                "disarmed" => {
+                    icon = (
+                        self.config
+                            .icons
+                            .get("shield-off")
+                            .map_or('\0', |&c| c)
+                            .to_string(),
+                        3334,
+                    );
+                    if !code_arm_required {
+                        numkey = false;
+                    }
+                }
+                "armed_home" => {
+                    icon = (
+                        self.config
+                            .icons
+                            .get("shield-home")
+                            .map_or('\0', |&c| c)
+                            .to_string(),
+                        55907,
+                    );
+                }
+                "armed_away" => {
+                    icon = (
+                        self.config
+                            .icons
+                            .get("shield-lock")
+                            .map_or('\0', |&c| c)
+                            .to_string(),
+                        55907,
+                    );
+                }
+                "armed_night" => {
+                    icon = (
+                        self.config
+                            .icons
+                            .get("weather-night")
+                            .map_or('\0', |&c| c)
+                            .to_string(),
+                        55907,
+                    );
+                }
+                "armed_vacation" => {
+                    icon = (
+                        self.config
+                            .icons
+                            .get("shield-airplane")
+                            .map_or('\0', |&c| c)
+                            .to_string(),
+                        55907,
+                    );
+                }
+                "pending" | "arming" =>{
+                    icon = (
+                        self.config
+                            .icons
+                            .get("shield")
+                            .map_or('\0', |&c| c)
+                            .to_string(),
+                        62848,
+                    );
+                    falshing = true;
+                }
+                "triggered" =>{
+                    icon = (
+                        self.config
+                            .icons
+                            .get("bell-ring")
+                            .map_or('\0', |&c| c)
+                            .to_string(),
+                        55907,
+                    );
+                    falshing = true;
+                }
+                _ => {}
+            }
+
+
             r_update = format!(
-                "entityUpd~{}~1|1~{}~{}~{}~disable~disable~",
-                alarm.entity, alarm.supported_mode, alarm.icon.0, alarm.icon.1
-            )
-            .into();
+                "entityUpd~{}~1|1~{}~{}~{}~{}~{}~",
+                alarm.entity, alarm.supported_mode, alarm.icon.0, alarm.icon.1,
+                if !numkey { "disable" } else { "enable" },
+                if falshing { "enable" } else { "disable" },
+            ).into();
         }
-        DeviceState::read_process_overwrite(self.device_id, device);
+
 
         vec![r_page, r_update]
     }
     fn screensaver(&self) -> Vec<Bytes> {
+        let mut device = DeviceState::get_state(self.device_id);
+        if let Some(mut page) = device.page.take() {
+            page.previous = page.current;
+            page.current = Card::Screensaver;
+            device.page = Some(page);
+        }
+        DeviceState::read_process_overwrite(self.device_id, device);
+
         let dt = Utc::now().with_timezone(&FixedOffset::east_opt(2 * 3600).unwrap());
         let date = dt.format("%A, %d. %B %Y");
         let time = format!("time~{:0>2}:{:0>2}", dt.hour(), dt.minute());
@@ -143,11 +243,16 @@ impl<'a> Command<'_> {
     }
 
     fn qr_code(&self) -> Vec<Bytes> {
-        let device_state = DeviceState::get_state(self.device_id);
+        let mut device_state = DeviceState::get_state(self.device_id);
 
         let mut r_page = Bytes::default();
         let mut r_update = Bytes::default();
-        if let Some(page) = device_state.page {
+        if let Some(mut page) = device_state.page.take() {
+            page.previous = page.current;
+            page.current = Card::CardQR;
+            // Update current page
+            DeviceState::read_process_overwrite(self.device_id, device_state);
+
             r_page = format!("pageType~{}", page.current.as_str()).into();
 
             if let Some(config_card) = self
