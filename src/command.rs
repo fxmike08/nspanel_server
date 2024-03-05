@@ -82,11 +82,16 @@ impl<'a> Command<'_> {
             page.previous = page.current;
             page.current = Card::CardAlarm;
         }
-        DeviceState::read_process_overwrite(self.device_id, device);
 
         r_page = format!("pageType~{}", Card::CardAlarm.as_str()).into();
-        // TODO FIX the following, read this from hass
-        r_update = format!("entityUpd~alarm_control_panel.alarm~1|1~Armat acasa~arm_home~Armat plecat~arm_away~Armat noaptea~arm_night~Armat vacanta~arm_vacation~\0~3334~disable~disable~").into();
+        if let Some(alarm) = &device.alarm {
+            r_update = format!(
+                "entityUpd~{}~1|1~{}~{}~{}~disable~disable~",
+                alarm.entity, alarm.supported_mode, alarm.icon.0, alarm.icon.1
+            )
+            .into();
+        }
+        DeviceState::read_process_overwrite(self.device_id, device);
 
         vec![r_page, r_update]
     }

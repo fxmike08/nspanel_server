@@ -21,6 +21,7 @@ use tokio::time::{interval, timeout, Duration};
 use crate::command::{Command, Page};
 use crate::config::schema::{Config, Device};
 use crate::homeassitant::events::RootEvent;
+use crate::mqttc::model::alarm::Alarm;
 use crate::mqttc::model::screensaver::Screensaver;
 use crate::utils;
 
@@ -199,7 +200,8 @@ impl MqttC {
         };
 
         Screensaver::process_temperature_sensor(&config, &value, &device, &mut insert_message);
-        Screensaver::process_weather(&config, device, value, json, &mut insert_message);
+        Screensaver::process_weather(&config, device, &value, &json, &mut insert_message);
+        Alarm::process_alarm_data(&config, &value, &device, &json, &mut insert_message);
 
         // Handle model only if are for the current page
         if let Some(&ref current_page) = device_state.page.as_ref().map(|p| &p.current) {

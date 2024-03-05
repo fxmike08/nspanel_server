@@ -131,6 +131,22 @@ impl Config {
     }
 
     #[allow(dead_code)]
+    pub fn get_entity_by_name_and_by_card(
+        &self,
+        device_id: &str,
+        card: &str,
+        name: &str,
+    ) -> Option<Entity> {
+        if let Some(res) = self.get_card_by_name(device_id, card) {
+            res.entities
+                .into_iter()
+                .find(|e| e.name.eq(&Some(name.to_string())))
+        } else {
+            None
+        }
+    }
+
+    #[allow(dead_code)]
     pub fn get_adjacent_card(&self, device_id: &str, card: &str, forward: bool) -> Option<Cards> {
         if let Some((_, device)) = self
             .devices

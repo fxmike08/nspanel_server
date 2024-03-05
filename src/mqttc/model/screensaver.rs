@@ -32,8 +32,8 @@ impl Screensaver {
     pub fn process_weather<F>(
         config: &Config,
         device: &Device,
-        value: String,
-        json: RootEvent,
+        value: &str,
+        json: &RootEvent,
         mut insert_message: F,
     ) where
         F: FnMut(Card, Vec<String>),
@@ -47,7 +47,7 @@ impl Screensaver {
                 {
                     insert_message(
                         Card::Screensaver,
-                        Screensaver::get_weather_and_colors(&config, value, v),
+                        Screensaver::get_weather_and_colors(&config, value, v, weather),
                     );
                 }
             }
@@ -102,7 +102,12 @@ impl Screensaver {
     /// color~0~1~2~...~21
     /// ```
     ///
-    fn get_weather_and_colors(config: &Config, value: String, v: &Value) -> Vec<String> {
+    fn get_weather_and_colors(
+        config: &Config,
+        value: &str,
+        v: &Value,
+        weather_entity: Entity,
+    ) -> Vec<String> {
         use crate::homeassitant::events::{Weather, WeatherEvent, WeatherForecast};
         use crate::utils::{
             get_screensaver_color_output, get_weather_icon, STORED_STATE, WEATHER_COLORS_KEY,
@@ -112,7 +117,7 @@ impl Screensaver {
         use std::collections::HashMap;
 
         let weather;
-        if value.contains(r#"weather.accuweather":{"s"#) {
+        if value.contains(format!(r#"{}":{{"s"#, weather_entity.entity).as_str()) {
             let w: WeatherEvent = serde_json::from_value(v.clone())
                 .expect("Failed to convert to WeatherEvent struct");
             weather = w;
