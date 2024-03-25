@@ -145,18 +145,14 @@ impl Alarm {
                         55907,
                     );
                 }
-                "pending" | "arming" =>{
+                "pending" | "arming" => {
                     icon = (
-                        config
-                            .icons
-                            .get("shield")
-                            .map_or('\0', |&c| c)
-                            .to_string(),
+                        config.icons.get("shield").map_or('\0', |&c| c).to_string(),
                         62848,
                     );
                     falshing = true;
                 }
-                "triggered" =>{
+                "triggered" => {
                     icon = (
                         config
                             .icons
@@ -178,7 +174,10 @@ impl Alarm {
         if let Some(alarm) = device_state.alarm {
             let r_update = format!(
                 "entityUpd~{}~1|1~{}~{}~{}~{}~{}~",
-                alarm.entity, alarm.supported_mode, alarm.icon.0, alarm.icon.1,
+                alarm.entity,
+                alarm.supported_mode,
+                alarm.icon.0,
+                alarm.icon.1,
                 if !numkey { "disable" } else { "enable" },
                 if falshing { "enable" } else { "disable" },
             )

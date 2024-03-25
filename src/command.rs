@@ -53,7 +53,7 @@ impl<'a> Command<'_> {
 
     fn exist_screensaver(&self) -> Vec<Bytes> {
         let mut device = DeviceState::get_state(self.device_id);
-        let mut current_page = Page::Screensaver ; // this may never be used
+        let mut current_page = Page::Screensaver; // this may never be used
         if let Some(mut page) = device.page.take() {
             if page.current == page.previous && page.current == Card::Screensaver {
                 if let Some(first_card) = self
@@ -66,7 +66,7 @@ impl<'a> Command<'_> {
                     .map(|card| card.type_.clone())
                 {
                     page.current = Card::from(first_card);
-                    current_page =  Page::from(page.current.as_str());
+                    current_page = Page::from(page.current.as_str());
                 }
             } else {
                 current_page = Page::from(page.clone().previous.as_str());
@@ -150,7 +150,7 @@ impl<'a> Command<'_> {
                         55907,
                     );
                 }
-                "pending" | "arming" =>{
+                "pending" | "arming" => {
                     icon = (
                         self.config
                             .icons
@@ -161,7 +161,7 @@ impl<'a> Command<'_> {
                     );
                     falshing = true;
                 }
-                "triggered" =>{
+                "triggered" => {
                     icon = (
                         self.config
                             .icons
@@ -175,15 +175,17 @@ impl<'a> Command<'_> {
                 _ => {}
             }
 
-
             r_update = format!(
                 "entityUpd~{}~1|1~{}~{}~{}~{}~{}~",
-                alarm.entity, alarm.supported_mode, alarm.icon.0, alarm.icon.1,
+                alarm.entity,
+                alarm.supported_mode,
+                alarm.icon.0,
+                alarm.icon.1,
                 if !numkey { "disable" } else { "enable" },
                 if falshing { "enable" } else { "disable" },
-            ).into();
+            )
+            .into();
         }
-
 
         vec![r_page, r_update]
     }

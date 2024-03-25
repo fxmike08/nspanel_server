@@ -184,11 +184,12 @@ impl Screensaver {
             map.insert(WEATHER_COLORS_KEY.to_string(), weather_color.clone());
         }
         let mut result = vec![];
-        if !weather_color.is_empty() {
-            result.push(weather_color);
-        }
         if !weather_update.is_empty() {
             result.push(weather_update);
+        }
+        if !weather_color.is_empty() {
+            // make sure the weather_color is always after weather_update, otherwise colors will not work
+            result.push(weather_color);
         }
         result
     }

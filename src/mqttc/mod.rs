@@ -8,6 +8,9 @@ use std::sync::Arc;
 
 use crate::cards::Card;
 use chrono::{FixedOffset, Timelike, Utc};
+use futures::future::join_all;
+use futures::stream::FuturesOrdered;
+use futures::{Stream, StreamExt};
 use log::{error, info, trace};
 use rumqttc::v5::mqttbytes::v5::Packet::Publish;
 use rumqttc::v5::mqttbytes::QoS;
@@ -113,13 +116,17 @@ impl MqttC {
                                 let device_id = &topic[3..topic.len()];
                                 let tx = self.commands_matching(device_id, payload);
                                 info!("RX={:?}", tx);
+                                let mut futures = FuturesOrdered::new();
+
                                 for data in tx {
-                                    let _ = self
-                                        .client
-                                        .0
-                                        .publish("tx/nspanel-ds", QoS::ExactlyOnce, false, data)
-                                        .await;
+                                    futures.push_back(async {
+                                        self.client
+                                            .0
+                                            .publish("tx/nspanel-ds", QoS::ExactlyOnce, false, data)
+                                            .await
+                                    });
                                 }
+                                while let Some(_) = futures.next().await {} //ensure commands are in order and display has time to process them.
                             }
                             _ => {
                                 // trace!(self.logger, "Uninteresting Mqtt event {:?}",e);
