@@ -163,7 +163,12 @@ impl Config {
                 let new_index = if forward {
                     (index + 1) % device_cards.len() // Next index, wrapping around at the end
                 } else {
-                    (index - 1) % device_cards.len() // Previous index, wrapping around at the beginning
+                    // Previous index, wrapping around at the beginning
+                    if index == 0 {
+                        device_cards.len() - 1
+                    } else {
+                        (index - 1) % device_cards.len()
+                    }
                 };
                 return Some(device_cards[new_index].clone());
             }
