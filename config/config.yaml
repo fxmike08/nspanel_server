@@ -13,12 +13,13 @@ nspanel-ds:
       - time: "23:00:00"
         value: 1
     locale: "ro_RO"
+    timezone: "Europe/Bucharest"
   cards:
     - type: screensaver
       entities:
-        - entity: weather.accuweather
+        - entity: sensor.accuweather_custom_forecast
           name: weather
-        - entity: sensor.nspanel_ds_temperature_2
+        - entity: sensor.nspanel_ds_temperature
           icon: home-thermometer-outline
           name: temperatureSensor
     - type: cardAlarm

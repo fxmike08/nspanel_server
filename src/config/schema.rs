@@ -28,6 +28,7 @@ pub struct DeviceConfig {
     pub timeout_to_screensaver: u16,
     pub screensaver_brightness: Vec<BrightnessScheduler>,
     pub locale: String,
+    pub timezone: String,
 }
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BrightnessScheduler {
@@ -131,6 +132,22 @@ impl Config {
     }
 
     #[allow(dead_code)]
+    pub fn get_entity_by_name_and_by_card(
+        &self,
+        device_id: &str,
+        card: &str,
+        name: &str,
+    ) -> Option<Entity> {
+        if let Some(res) = self.get_card_by_name(device_id, card) {
+            res.entities
+                .into_iter()
+                .find(|e| e.name.eq(&Some(name.to_string())))
+        } else {
+            None
+        }
+    }
+
+    #[allow(dead_code)]
     pub fn get_adjacent_card(&self, device_id: &str, card: &str, forward: bool) -> Option<Cards> {
         if let Some((_, device)) = self
             .devices
@@ -147,7 +164,12 @@ impl Config {
                 let new_index = if forward {
                     (index + 1) % device_cards.len() // Next index, wrapping around at the end
                 } else {
-                    (index - 1) % device_cards.len() // Previous index, wrapping around at the beginning
+                    // Previous index, wrapping around at the beginning
+                    if index == 0 {
+                        device_cards.len() - 1
+                    } else {
+                        (index - 1) % device_cards.len()
+                    }
                 };
                 return Some(device_cards[new_index].clone());
             }

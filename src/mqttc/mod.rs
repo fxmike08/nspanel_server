@@ -7,7 +7,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use crate::cards::Card;
-use chrono::{FixedOffset, Timelike, Utc};
+use chrono::{Timelike, Utc};
+use chrono_tz::Tz;
+use futures::stream::FuturesOrdered;
+use futures::StreamExt;
 use log::{error, info, trace};
 use rumqttc::v5::mqttbytes::v5::Packet::Publish;
 use rumqttc::v5::mqttbytes::QoS;
@@ -21,6 +24,7 @@ use tokio::time::{interval, timeout, Duration};
 use crate::command::{Command, Page};
 use crate::config::schema::{Config, Device};
 use crate::homeassitant::events::RootEvent;
+use crate::mqttc::model::alarm::Alarm;
 use crate::mqttc::model::screensaver::Screensaver;
 use crate::utils;
 
@@ -112,13 +116,17 @@ impl MqttC {
                                 let device_id = &topic[3..topic.len()];
                                 let tx = self.commands_matching(device_id, payload);
                                 info!("RX={:?}", tx);
+                                let mut futures = FuturesOrdered::new();
+
                                 for data in tx {
-                                    let _ = self
-                                        .client
-                                        .0
-                                        .publish("tx/nspanel-ds", QoS::ExactlyOnce, false, data)
-                                        .await;
+                                    futures.push_back(async {
+                                        self.client
+                                            .0
+                                            .publish("tx/nspanel-ds", QoS::ExactlyOnce, false, data)
+                                            .await
+                                    });
                                 }
+                                while let Some(_) = futures.next().await {} //ensure commands are in order and display has time to process them.
                             }
                             _ => {
                                 // trace!(self.logger, "Uninteresting Mqtt event {:?}",e);
@@ -199,7 +207,8 @@ impl MqttC {
         };
 
         Screensaver::process_temperature_sensor(&config, &value, &device, &mut insert_message);
-        Screensaver::process_weather(&config, device, value, json, &mut insert_message);
+        Screensaver::process_weather(&config, device, &value, &json, &mut insert_message);
+        Alarm::process_alarm_data(&config, &value, &device, &json, &mut insert_message);
 
         // Handle model only if are for the current page
         if let Some(&ref current_page) = device_state.page.as_ref().map(|p| &p.current) {
@@ -224,7 +233,12 @@ impl MqttC {
             trace!("Each seconds {}", 10);
             //TODO change this to send message over channel and not like how it's done now.
             for device in config.devices.values() {
-                let dt = Utc::now().with_timezone(&FixedOffset::east_opt(2 * 3600).unwrap());
+                let tz: Tz = device
+                    .config
+                    .timezone
+                    .parse()
+                    .unwrap_or(chrono_tz::Etc::GMT);
+                let dt = Utc::now().with_timezone(&tz);
                 let time_str = format!("time~{:0>2}:{:0>2}~", dt.hour(), dt.minute());
                 let bytes = Bytes::from(time_str.into_bytes());
                 let _ = publisher

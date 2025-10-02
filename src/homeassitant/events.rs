@@ -73,3 +73,26 @@ pub struct WeatherForecast {
     pub wind_speed: Option<f32>,
     pub precipitation: Option<f32>,
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Alarm {
+    #[serde(alias = "+")]
+    pub event: AlarmEvent,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AlarmEvent {
+    #[serde(alias = "s", alias = "state")]
+    pub state: Option<String>,
+    #[serde(alias = "lc")]
+    pub last_changed: f64, // Unix epoch time
+    #[serde(alias = "a")]
+    pub data: Option<AlarmEventData>,
+}
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AlarmEventData {
+    pub code_arm_required: Option<bool>,
+    pub code_format: Option<String>,
+    pub friendly_name: Option<String>,
+    pub supported_features: Option<u8>,
+}

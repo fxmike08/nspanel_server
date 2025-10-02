@@ -160,12 +160,22 @@ impl Default for Page {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct AlarmState {
+    pub(crate) state: String,
+    pub(crate) supported_mode: String,
+    pub(crate) code_arm_required: Option<bool>,
+    pub(crate) entity: String,
+    pub(crate) icon: (String, u32), // (icon, color)
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct DeviceState {
     pub(crate) temp: Option<String>,
     pub(crate) humidity: Option<String>,
     pub(crate) iaq: Option<String>,
     pub(crate) page: Option<Page>,
+    pub(crate) alarm: Option<AlarmState>,
 }
 
 impl DeviceState {
@@ -182,6 +192,27 @@ impl DeviceState {
         }
         if let Some(page) = other.page.clone() {
             self.page = Some(page);
+        }
+        if let Some(alarm) = other.alarm.clone() {
+            if let Some(stored) = &mut self.alarm {
+                if !alarm.state.is_empty() {
+                    stored.state = alarm.state;
+                }
+                if !alarm.supported_mode.is_empty() {
+                    stored.supported_mode = alarm.supported_mode;
+                }
+                if alarm.code_arm_required.is_some() {
+                    stored.code_arm_required = alarm.code_arm_required;
+                }
+                if !alarm.icon.0.is_empty() {
+                    stored.icon = alarm.icon;
+                }
+                if !alarm.entity.is_empty() {
+                    stored.entity = alarm.entity;
+                }
+            } else {
+                self.alarm = Some(alarm);
+            }
         }
     }
 
