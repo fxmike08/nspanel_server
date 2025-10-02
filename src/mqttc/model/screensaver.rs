@@ -1,6 +1,7 @@
 use crate::cards::Card;
 use crate::config::schema::{Config, Device, Entity};
 use crate::homeassitant::events::RootEvent;
+use chrono::NaiveDateTime;
 use serde_json::Value;
 
 /// The Screensaver card page.
@@ -68,7 +69,10 @@ impl Screensaver {
         use crate::utils::DeviceState;
         use regex::Regex;
 
-        let regex = format!(r#"\B"{}":\{{["\+":\{{]*"s":"(.*?)"\B"#, temp_sensor.entity);
+        let regex = format!(
+            r#"\B"{}":\{{["\+":\{{]*"s":"(\d{{2}}\.\d)(.*?)"\B"#,
+            temp_sensor.entity
+        );
         let rgx = Regex::new(regex.as_str()).unwrap();
         if let Ok(caps) = rgx.captures(&*value).ok_or("no match") {
             let temp = caps.get(1).map_or("", |m| m.as_str());
@@ -113,11 +117,13 @@ impl Screensaver {
             get_screensaver_color_output, get_weather_icon, STORED_STATE, WEATHER_COLORS_KEY,
             WEATHER_KEY,
         };
-        use chrono::{DateTime, Datelike};
+        use chrono::Datelike;
         use std::collections::HashMap;
 
         let weather;
-        if value.contains(format!(r#"{}":{{"s"#, weather_entity.entity).as_str()) {
+        if value.contains(format!(r#"{}":{{"s"#, weather_entity.entity).as_str())
+            && !value.contains(r#"s":"unknown"#)
+        {
             let w: WeatherEvent = serde_json::from_value(v.clone())
                 .expect("Failed to convert to WeatherEvent struct");
             weather = w;
@@ -146,7 +152,7 @@ impl Screensaver {
             weather_color = get_screensaver_color_output(forecast_icons);
 
             let extract_weekday = |datetime_str: &str| -> chrono::Weekday {
-                DateTime::parse_from_rfc3339(datetime_str)
+                NaiveDateTime::parse_from_str(datetime_str, "%Y-%m-%dT%H:%M:%S")
                     .ok()
                     .map(|datetime| datetime.weekday())
                     .expect(

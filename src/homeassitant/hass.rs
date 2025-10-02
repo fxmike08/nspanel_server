@@ -2,7 +2,7 @@ use crate::config::schema::Config;
 use crate::homeassitant::events::RootEvent;
 use futures::stream::SplitStream;
 use futures::{SinkExt, StreamExt, TryStreamExt};
-use log::{error, info};
+use log::{error, info, trace};
 use std::collections::HashMap;
 use std::string::String;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -45,10 +45,13 @@ pub fn start_hass(
 
                 // Authenticate
                 let _ = write
-                    .send(Message::Text(format!(
-                        r#"{{ "type": "auth", "access_token": "{}" }}"#,
-                        config.connectivity.hass.token
-                    )))
+                    .send(Message::Text(
+                        format!(
+                            r#"{{ "type": "auth", "access_token": "{}" }}"#,
+                            config.connectivity.hass.token
+                        )
+                        .into(),
+                    ))
                     .await;
 
                 let mut seq = 1;
@@ -60,7 +63,7 @@ pub fn start_hass(
                         .send(Message::Text(format!(
                             r#"{{ "id": {}, "type": "subscribe_entities", "entity_ids": {:?} }}"#,
                             seq, entities
-                        )))
+                        ).into()))
                         .await;
                     let mut map = shared_map.write().unwrap();
                     map.insert(seq.to_string(), key);
@@ -77,6 +80,11 @@ pub fn start_hass(
                     shutdown.clone(),
                     sender_to_mqtt.clone(),
                     cloned_map,
+                ));
+
+                tokio::spawn(handle_messages_from_mqtt(
+                    shutdown.clone(),
+                    receiver_from_mqtt.clone(),
                 ));
 
                 // This loop listens for any reconnect signals
@@ -97,6 +105,28 @@ pub fn start_hass(
             }
         }
     })
+}
+
+async fn handle_messages_from_mqtt(
+    shutdown: Arc<AtomicBool>,
+    mqtt_msg: Arc<Mutex<Receiver<(String, String)>>>,
+) {
+    while !shutdown.load(Ordering::SeqCst) {
+        let message;
+        // Receive messages from the shared receiver
+        // Adding timeout in case config is changed
+        if let Ok(result) = timeout(Duration::from_secs(5), mqtt_msg.lock().await.recv()).await {
+            trace!("Message from Mqtt: {:?}", result);
+            message = result;
+        } else {
+            continue;
+        }
+        if let Some((key, value)) = message {
+        } else {
+            break; // Exit the loop if the channel is closed
+        }
+    }
+    trace!("Exiting async loop from send_on_event");
 }
 
 pub async fn handle_messages(
@@ -126,7 +156,9 @@ pub async fn handle_messages(
                                     if let Some(device_id) =
                                         shared_map_clone.get(&*json.id.to_string())
                                     {
-                                        let _ = sender_to_mqtt.send((device_id.clone(), txt)).await;
+                                        let _ = sender_to_mqtt
+                                            .send((device_id.clone(), txt.to_string()))
+                                            .await;
                                     }
                                 }
 

@@ -7,10 +7,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use crate::cards::Card;
-use chrono::{FixedOffset, Timelike, Utc};
-use futures::future::join_all;
+use chrono::{Timelike, Utc};
+use chrono_tz::Tz;
 use futures::stream::FuturesOrdered;
-use futures::{Stream, StreamExt};
+use futures::StreamExt;
 use log::{error, info, trace};
 use rumqttc::v5::mqttbytes::v5::Packet::Publish;
 use rumqttc::v5::mqttbytes::QoS;
@@ -233,7 +233,12 @@ impl MqttC {
             trace!("Each seconds {}", 10);
             //TODO change this to send message over channel and not like how it's done now.
             for device in config.devices.values() {
-                let dt = Utc::now().with_timezone(&FixedOffset::east_opt(2 * 3600).unwrap());
+                let tz: Tz = device
+                    .config
+                    .timezone
+                    .parse()
+                    .unwrap_or(chrono_tz::Etc::GMT);
+                let dt = Utc::now().with_timezone(&tz);
                 let time_str = format!("time~{:0>2}:{:0>2}~", dt.hour(), dt.minute());
                 let bytes = Bytes::from(time_str.into_bytes());
                 let _ = publisher

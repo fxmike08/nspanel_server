@@ -41,7 +41,7 @@ impl Alarm {
         alarm: Entity,
         v: &Value,
     ) -> Vec<String> {
-        let mut alarm_d;
+        let alarm_d;
         if value.contains(format!(r#"{}":{{"s"#, alarm.entity).as_str()) {
             let a: AlarmEvent =
                 serde_json::from_value(v.clone()).expect("Failed to convert to AlarmEvent struct");

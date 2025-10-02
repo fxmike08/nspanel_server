@@ -45,9 +45,9 @@ impl<'a> Command<'_> {
             Page::ExistScreensaver => self.exist_screensaver(),
             Page::CardAlarm => self.card_alarm(),
             Page::CardQR => self.qr_code(),
-            _ => {
-                vec![]
-            }
+            // _ => {
+            //     vec![]
+            // }
         }
     }
 

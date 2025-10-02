@@ -28,6 +28,7 @@ pub struct DeviceConfig {
     pub timeout_to_screensaver: u16,
     pub screensaver_brightness: Vec<BrightnessScheduler>,
     pub locale: String,
+    pub timezone: String,
 }
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BrightnessScheduler {
